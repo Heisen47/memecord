@@ -1,149 +1,118 @@
-# MemeMeet 🎭
+# Memecord 🎭
 
-> **Chrome Extension (Manifest V3)** adding a fun, gesture-controlled meme overlay to Google Meet calls using local on-device machine learning (MediaPipe Hand Landmarker).
+> **Google Chrome Extension (Manifest V3)** for live meeting meme overlays and soundboard triggers across browser-based video calls.
 
 ---
 
-## 1. Project Structure
+## ⚠️ Important Scope & Compatibility
+
+> [!IMPORTANT]
+> **Memecord is a Google Chrome Extension.**  
+> It works exclusively inside **Google Chrome browser tabs** where video calls are conducted.  
+> It does **NOT** run inside standalone desktop applications (like Discord Desktop, Zoom Desktop, or Teams Desktop).
+
+### Supported Websites in Google Chrome:
+- **Google Meet** (`meet.google.com`)
+- **Discord Web** ([`discord.com/app`](https://discord.com/app) or [`discord.com/channels`](https://discord.com/channels)) — *Use Discord in Chrome to use Memecord!*
+- **Zoom Web Client** (`zoom.us/wc/*`)
+- **Microsoft Teams Web** (`teams.microsoft.com`)
+- **Slack Calls & Huddles** (`slack.com`)
+- **FaceTime Web** (`facetime.apple.com`)
+- **WhatsApp Web** (`web.whatsapp.com`)
+- Any standard WebRTC video call website opened in Google Chrome
+
+---
+
+## 🌟 Key Features
+
+1. **Other Callers See the Memes (Zero Extension Needed for Them)**:
+   - Uses an in-page canvas stream compositor (`inject.js`) to intercept `getUserMedia`.
+   - Stamps animated GIFs/videos with smooth WebCodecs frame playback directly onto your outgoing camera stream.
+   - Remote participants see your memes directly through your camera feed in Google Meet, Discord, Zoom, etc.
+
+2. **Works With OR Without Camera Active**:
+   - Detects active calls and voice channels via audio stream hooks (`getUserMedia` mic tracks), WebRTC connection state, and meeting DOM controls.
+   - Even if your camera is turned off or muted, the Memecord HUD displays on screen, and hotkeys (`1–9`, `0`, `Q...`, `Alt+M`) trigger local visual overlays and sound effects.
+   - If you turn on your camera at any point during the call, the compositor immediately begins stamping memes onto your outgoing video.
+
+3. **Modern Floating HUD (Memecord Deck)**:
+   - **Hotkey Binds**: Press `1–9`, `0`, or `Q...` to fire memes instantly during calls.
+   - **Key Conflict Prevention**: Rebinding hotkeys automatically prevents and resolves key clashes.
+   - **Minimizable**: Click the minimize (`—`) button or press `Alt+M` to collapse the HUD into a clean circular logo pebble. Click the pebble to expand.
+   - **Persistent Storage**: Saved memes and custom hotkeys persist across calls and browser sessions.
+   - **Quick Add & Custom URLs**: Add custom GIF or video URLs directly from the HUD.
+
+---
+
+## 🚀 How to Install in Google Chrome
+
+1. **Build the extension**:
+   ```bash
+   npm install
+   npm run build
+   ```
+   *(Compiled extension files are output to the `dist/` directory).*
+
+2. **Load into Google Chrome**:
+   - Open Google Chrome and go to `chrome://extensions/`.
+   - Enable **Developer mode** (toggle in the top-right corner).
+   - Click **Load unpacked** (top-left button).
+   - Select the `dist/` directory inside this project:
+     `/Users/heisenberg/Documents/projects/memecord/dist`
+   - **Memecord** is now installed and active!
+
+---
+
+## 🧪 How to Test
+
+### Option 1: Standalone Test Lab (No Meeting Needed)
+1. Click the **Memecord** icon in your Chrome extensions toolbar and click **"Open Test Lab / Simulator"**, or open:
+   `http://localhost:5173/test/index.html` (when running `npm run dev`) or `dist/test/index.html`.
+2. Test both modes:
+   - **Camera Disabled Mode**: The HUD is visible, click memes or press `1`, `2`, `3` to test overlay and sound.
+   - **Camera Stream Mode**: Click "Start Camera Stream" to see what remote callers see in Google Meet and Discord.
+
+### Option 2: Live in Discord Web
+1. Open [`https://discord.com/app`](https://discord.com/app) in Google Chrome.
+2. Join any server voice channel or start a DM call.
+3. The Memecord HUD appears in the bottom corner of your Discord tab!
+4. Press `1` or click a meme card to trigger.
+
+### Option 3: Live in Google Meet
+1. Open [`https://meet.google.com`](https://meet.google.com) and start an instant meeting.
+2. The Memecord HUD appears once you are inside the call (with cam on or off).
+3. Press `1–9` to display memes to yourself and remote participants.
+
+---
+
+## 📁 Repository Structure
 
 ```text
-meemcord/
-├── dist/                         # Compiled production extension (load this in Chrome)
-│   ├── manifest.json             # MV3 manifest
-│   ├── background.js             # Service worker
-│   ├── content.js                # Standalone IIFE content script for Google Meet
-│   ├── popup/index.html          # Extension React popup UI
-│   ├── test/index.html           # Standalone Gesture Test Lab / Sandbox
-│   ├── memes/                    # Meme GIFs (thumbs-up, victory, stop)
-│   ├── models/                   # MediaPipe hand_landmarker.task model
-│   ├── mediapipe/wasm/           # Local WebAssembly binaries
-│   └── icons/                    # Extension icons (16px, 48px, 128px)
-├── public/                       # Static assets copied into dist
-│   ├── memes/                    # Bundled animated meme GIFs
-│   ├── models/                   # MediaPipe tasks vision model
-│   ├── mediapipe/wasm/           # Bundled WASM files
-│   ├── icons/                    # Generated PNG icons
+memecord/
+├── dist/                      # Compiled production extension for Chrome
+├── public/                    # Static assets & icons
+│   ├── icons/                 # Logo and extension icons (16, 48, 128)
+│   ├── memes/                 # Bundled meme GIFs and sounds
 │   └── manifest.json
-├── scripts/
-│   ├── build.js                  # Multi-target build script (IIFE content script + React pages)
-│   └── make-icons.sh             # SVG to PNG icon generator
 ├── src/
-│   ├── background/
-│   │   └── index.ts              # Service worker & storage initialization
+│   ├── background/            # MV3 background service worker & proxy
 │   ├── content/
-│   │   ├── index.ts              # Content script bootstrap (singleton guard)
-│   │   └── meet-controller.ts    # Google Meet lifecycle, SPA observer, hotkeys
-│   ├── gesture/
-│   │   ├── classifier.ts         # 21-landmark geometric pose classifier
-│   │   ├── detector.ts           # MediaPipe Tasks Vision + webcam processing loop
-│   │   ├── state-machine.ts      # IDLE -> DETECTING -> CONFIRMED -> TRIGGERED -> COOLDOWN
-│   │   └── types.ts              # Internal gesture types
+│   │   ├── index.ts           # Content script entry point
+│   │   ├── inject.ts          # MAIN world WebRTC & canvas camera compositor
+│   │   └── overlay-controller.ts # Call detection (Meet, Discord, Zoom, Teams)
 │   ├── overlay/
-│   │   ├── meme-overlay.ts       # DOM overlay injector with pointer-events:none
-│   │   ├── debug-hud.ts          # Real-time state machine HUD badge
-│   │   └── overlay.css           # Smooth scale/fade CSS animations
-│   ├── popup/
-│   │   ├── Popup.tsx             # React popup settings & mapping dashboard
-│   │   ├── index.tsx             # React popup mounting
-│   │   └── popup.css             # Glassmorphic dark theme styles
-│   ├── shared/
-│   │   ├── config.ts             # Default timings, memes, and keyboard maps
-│   │   ├── storage.ts            # chrome.storage.local with localStorage fallback
-│   │   └── types.ts              # Global TypeScript interfaces
-│   └── test/
-│       ├── TestLab.tsx           # Standalone gesture sandbox with skeleton drawing
-│       ├── index.tsx             # Test lab mount
-│       └── test.css              # Test lab layout styles
-├── CHROMEWEBSTORE.md             # Chrome Web Store listing & permissions justification
-├── manifest.json
-├── package.json
-├── tsconfig.json
-└── vite.config.ts
+│   │   ├── floating-dock.ts   # Interactive floating HUD & summon pebble
+│   │   └── meme-overlay.ts    # Local DOM visual overlay & sound effects
+│   ├── popup/                 # React settings dashboard (chrome action popup)
+│   ├── shared/                # Storage, hotkey resolvers, and TypeScript types
+│   └── test/                  # TestLab sandbox simulator
+├── manifest.json              # Chrome Extension MV3 Manifest
+└── package.json
 ```
 
 ---
 
-## 2. How to Install the Extension Locally
+## 🔒 Privacy & Permissions
 
-1. Open Google Chrome.
-2. In the address bar, navigate to: `chrome://extensions/`
-3. Toggle on **Developer mode** in the top-right corner.
-4. Click **Load unpacked** in the top-left corner.
-5. Select the `dist` directory inside this repository (`/Users/heisenberg/Documents/projects/meemcord/dist`).
-6. The **MemeMeet - Google Meet Gesture Memes** extension will appear in your extensions list.
-
----
-
-## 3. How to Run / Build
-
-### Prerequisites
-- Node.js (v18+)
-- npm (v9+)
-
-### Commands
-
-```bash
-# Install dependencies
-npm install
-
-# Build production extension (compiles TypeScript, bundles IIFE content script, copies assets to dist/)
-npm run build
-
-# Start local dev server (for fast iteration on Popup and TestLab in browser)
-npm run dev
-```
-
----
-
-## 4. How to Test
-
-### Option A: Standalone Test Lab (No Google Meet Needed!)
-1. Click the **MemeMeet** icon in your Chrome toolbar.
-2. Click **"Open Gesture Test Lab / Sandbox"** (or open `chrome-extension://<EXTENSION_ID>/test/index.html` directly).
-3. Grant camera permission.
-4. You will see:
-   - Your live mirrored camera feed with real-time hand skeleton tracking drawn over your fingers.
-   - Real-time gesture state, confidence score, and cooldown timer.
-   - Try showing 👍 **Thumbs Up**, ✌️ **Victory**, or 🖐 **Open Palm**.
-   - Watch the meme overlay pop onto the screen for 2 seconds and smoothly fade out!
-   - Test hotkeys: Press `1`, `2`, or `3` to manually trigger memes.
-
-### Option B: In a Real Google Meet Call
-1. Navigate to [Google Meet](https://meet.google.com).
-2. Start or join an instant meeting.
-3. Ensure **Meme Mode** is enabled in the MemeMeet popup (toggle is ON by default).
-4. Show a gesture to your webcam (hold stable for ~400ms):
-   - 👍 **Thumbs Up** &rarr; Chuck Norris Thumbs Up meme
-   - ✌️ **Victory** &rarr; Victory Dance meme
-   - 🖐 **Open Palm** &rarr; Michael Jordan "Stop It, Get Some Help" meme
-5. The meme appears over the call, stays for 2 seconds, and disappears smoothly.
-6. The anti-spam cooldown (~3 seconds) prevents multiple accidental triggers.
-7. Test hotkeys inside Meet: Press `1`, `2`, or `3` while not typing in chat to verify instant overlay display.
-8. Toggle on **"Show Debug HUD on Meet"** in the popup to see the real-time gesture telemetry badge in the top-right corner of Google Meet!
-
----
-
-## 5. Architectural Highlights & Guardrails
-
-- **Zero Camera Stream Conflict:** The extension does not intercept or overwrite Google Meet's WebRTC tracks. It opens a lightweight secondary capture stream (320x240 @ 15fps) specifically for hand landmark processing, consuming minimal CPU.
-- **100% Client-Side Privacy:** Video frames are processed entirely in browser memory using local MediaPipe WebAssembly. No frames or audio are ever uploaded to any server.
-- **Safe DOM Injection:** The overlay container `#mememeet-overlay-root` uses `pointer-events: none !important` and `z-index: 2147483647`. It will never intercept clicks or block microphone, camera, chat, screen share, or participant controls.
-- **SPA Lifecycle Handling:** Google Meet dynamically changes routes between lobby, pre-join, and meeting rooms. The extension observes SPA DOM mutations, prevents duplicate instances with a singleton guard, and stops camera tracks immediately when disabled.
-
----
-
-## 6. Known Limitations of the MVP
-
-1. **Local Overlay Only:** In this MVP, the meme displays as an overlay on the user's local screen. Other participants in the call do not see the meme unless the user shares their screen or a virtual camera pipeline is added.
-2. **Webcam Sharing on Unsupported Platforms:** On Chrome for macOS/Windows, multiple consumers can share the webcam stream simultaneously. On certain strict virtual machines or unusual Linux setups where camera sharing is locked by the OS driver, the extension provides manual hotkeys (`1`, `2`, `3`) as a seamless fallback.
-3. **Lighting & Extreme Occlusion:** Gestures require hand landmarks to be reasonably visible in frame. Extreme backlighting or hands held right against the lens can lower classification confidence.
-
----
-
-## 7. What Should Be Built Next (Post-MVP)
-
-1. **Virtual Camera / Canvas Stream Injection:** Inject memes directly into the user's video feed using a canvas-based `captureStream()`, allowing everyone in the meeting to see the meme through your camera feed.
-2. **Custom Meme Uploader:** Allow users to upload their own custom GIFs/images and bind them to specific gestures in the popup UI.
-3. **Audio Sound Effects:** Optional classic sound effects (e.g. "Bruh", airhorn, ta-da) accompanying the meme overlay with volume control.
-4. **Additional Hand Gestures:** Expand classifier to support gestures like 🤘 Rock On, 🤙 Hang Loose, 🫰 Finger Heart, and 👏 Clapping.
-5. **Multi-Hand & Peer-to-Peer Sync:** WebRTC data channel or lightweight sync for teams where everyone with MemeMeet installed sees each other's gestures in real time.
+- **100% Client-Side**: All video frame compositing and hotkey monitoring take place locally in your browser tab.
+- **Zero Cloud Recording**: No audio, video, or meeting contents are ever recorded, collected, or uploaded to external servers.

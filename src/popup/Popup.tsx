@@ -201,6 +201,9 @@ export const Popup: React.FC = () => {
           </div>
           <div>
             <h1 className="brand-title">Memecord</h1>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Chrome Extension
+            </span>
           </div>
         </div>
         <div className={`status-badge ${settings.enabled ? 'active' : 'inactive'}`}>
@@ -208,6 +211,24 @@ export const Popup: React.FC = () => {
           {settings.enabled ? 'Active' : 'Paused'}
         </div>
       </header>
+
+      {/* Explicit Chrome Extension Scope Callout */}
+      <div style={{
+        background: 'rgba(99, 102, 241, 0.1)',
+        border: '1px solid rgba(129, 140, 248, 0.25)',
+        borderRadius: 10,
+        padding: '10px 12px',
+        marginBottom: 12,
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: 8
+      }}>
+        <span style={{ fontSize: 15 }}>🌐</span>
+        <div style={{ fontSize: 11, lineHeight: 1.45, color: '#cbd5e1' }}>
+          <strong style={{ color: '#fff', display: 'block', marginBottom: 2 }}>Chrome Extension for Browser Video Calls</strong>
+          Works in <strong>Google Chrome</strong> tabs on video call websites (Google Meet, Discord Web at <code style={{ color: '#a5b4fc' }}>discord.com</code>, Zoom Web, Teams Web, Slack Huddles, FaceTime Web). Does not run inside standalone desktop applications.
+        </div>
+      </div>
 
       {/* Master Toggle */}
       <div className="master-card">

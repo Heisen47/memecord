@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Memecord - Live Meeting Meme Camera Overlay",
+  "name": "Memecord - Chrome Extension for Video Call Memes",
   "version": "1.2.0",
-  "description": "Trigger fun meme overlays on your live camera stream and screen in Google Meet, Discord, Zoom, Teams, Slack & FaceTime.",
+  "description": "Chrome extension to trigger meme overlays on your live camera feed & screen across video call websites in Chrome (Google Meet, Discord Web, Zoom, Teams, Slack, FaceTime).",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",

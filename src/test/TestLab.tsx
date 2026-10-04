@@ -200,6 +200,30 @@ export const TestLab: React.FC = () => {
         </div>
       </header>
 
+      {/* Explicit Chrome Extension Scope Callout Banner */}
+      <div
+        style={{
+          background: 'rgba(99, 102, 241, 0.12)',
+          border: '1px solid rgba(129, 140, 248, 0.3)',
+          borderRadius: 12,
+          padding: '12px 18px',
+          marginBottom: 20,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 14
+        }}
+      >
+        <span style={{ fontSize: 24 }}>🧩</span>
+        <div>
+          <strong style={{ color: '#fff', fontSize: 13, display: 'block', marginBottom: 2 }}>
+            Memecord is a Google Chrome Extension
+          </strong>
+          <span style={{ color: '#cbd5e1', fontSize: 12, lineHeight: 1.5 }}>
+            It runs inside <strong>Google Chrome browser tabs</strong> where video calls are made (such as <strong>Google Meet</strong>, <strong>Discord Web</strong> at <code style={{ color: '#a5b4fc', background: 'rgba(0,0,0,0.3)', padding: '1px 5px', borderRadius: 4 }}>discord.com</code>, <strong>Zoom Web</strong>, <strong>Teams Web</strong>, <strong>Slack Huddles</strong>, and <strong>FaceTime Web</strong>). It operates exclusively in the browser and does <em>not</em> run inside standalone desktop applications like Discord Desktop.
+          </span>
+        </div>
+      </div>
+
       <div className="testlab-grid">
         {/* Left Column: Interactive Controls */}
         <div className="testlab-panel">

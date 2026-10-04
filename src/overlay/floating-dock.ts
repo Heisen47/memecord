@@ -126,6 +126,7 @@ export class FloatingDock {
     const title = document.createElement('span');
     title.className = 'memecord-deck-title';
     title.textContent = 'Memecord Deck';
+    title.title = 'Memecord Chrome Extension • Works in Google Chrome tabs on video call websites (Google Meet, Discord Web, Zoom, Teams, Slack)';
 
     const countBadge = document.createElement('span');
     countBadge.className = 'memecord-count-badge';
@@ -247,7 +248,8 @@ export class FloatingDock {
 
     const hint = document.createElement('div');
     hint.className = 'memecord-deck-hint';
-    hint.innerHTML = `<span>⌨️ Press hotkey <strong>[1–9, 0, Q...]</strong> during call</span>`;
+    hint.innerHTML = `<span>🌐 Chrome Extension • Press <strong>[1–9]</strong> during call</span>`;
+    hint.title = 'Active on video call websites in Google Chrome (Google Meet, Discord Web at discord.com, Zoom, Teams, Slack, FaceTime). Not for standalone desktop apps.';
 
     const posWrap = document.createElement('div');
     posWrap.className = 'memecord-deck-pos-wrap';

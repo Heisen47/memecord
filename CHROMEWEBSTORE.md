@@ -1,8 +1,8 @@
-# Chrome Web Store Listing — MemeMeet
+# Chrome Web Store Listing — Memecord
 
 **Last Updated:** October 4, 2026  
-**Extension Name:** MemeMeet - Google Meet Gesture Memes  
-**Version:** 1.0.0  
+**Extension Name:** Memecord - Chrome Extension for Video Call Memes  
+**Version:** 1.2.0  
 **Target Category:** Fun / Productivity  
 
 ---
@@ -10,27 +10,32 @@
 ## 1. Store Listing Copy
 
 ### Short Description (max 132 chars)
-Trigger fun meme overlays on your Google Meet screen using hand gestures like thumbs up, victory, and open palm.
+Chrome extension to trigger meme overlays on your live camera feed & screen across video call websites in Chrome (Meet, Discord, Zoom).
 
 ### Detailed Description
-Bring humor and fun into your Google Meet calls with hands-free gesture-triggered memes!
+Bring humor and energy into your video calls with Memecord!
 
-MemeMeet detects your natural hand gestures in real time and displays brief, non-intrusive meme overlays on your screen.
+Memecord is a Google Chrome extension that lets you trigger on-screen memes, animated GIFs, and sound effects during browser-based video calls. Because Memecord composites directly onto your outgoing camera stream, other call participants see your memes in real-time with ZERO extension installed on their side!
 
-FEATURES:
-- 👍 Thumbs Up → Chuck Norris Thumbs Up meme
-- ✌️ Victory / Peace → Victory Dance meme
-- 🖐 Open Palm → "Stop It, Get Some Help" meme
-- ⌨️ Hotkey Triggers: Press 1, 2, or 3 to test or trigger memes manually
-- ⏱️ Customizable Duration & Cooldown: Prevent spamming with configurable anti-spam cooldowns (default: 3s cooldown, 2s display)
-- 🧪 Dedicated Gesture Test Lab: Test gestures and view hand skeleton tracking in a local sandbox outside Google Meet
-- 🔒 100% Private & Local: Video frames are processed entirely on your device via MediaPipe. Zero video or audio is ever uploaded or recorded.
+COMPATIBLE WEBSITES IN GOOGLE CHROME:
+- Google Meet (meet.google.com)
+- Discord Web (discord.com/app or discord.com/channels) — Use Discord in Chrome!
+- Zoom Web Client (zoom.us/wc/*)
+- Microsoft Teams Web (teams.microsoft.com)
+- Slack Calls & Huddles (slack.com)
+- FaceTime Web (facetime.apple.com)
+- WhatsApp Web (web.whatsapp.com)
 
-HOW TO USE:
-1. Join any Google Meet call (https://meet.google.com).
-2. Click the MemeMeet extension icon in your toolbar and toggle "Enable Meme Mode".
-3. Show a gesture (👍, ✌️, or 🖐) to your webcam for ~400ms.
-4. Watch the meme appear on your screen and disappear smoothly after 2 seconds.
+*Note: Memecord is a Chrome Extension designed exclusively for web video calls inside Google Chrome. It does not run inside standalone desktop applications.*
+
+KEY FEATURES:
+- 🎥 Remote Participants See It: Stamped cleanly onto your outgoing camera stream via in-page canvas compositing.
+- 🎙️ Works With or Without Camera: Detects calls even when camera is off or muted; triggers on-screen visuals and audio.
+- ⌨️ Instant Keyboard Hotkeys: Press 1–9, 0, or Q... to trigger memes immediately.
+- 🎭 Minimizable Floating Deck: Minimize to a subtle circular logo pebble or expand with Alt+M.
+- 💾 Persistent Library: Add your favorite GIFs/videos with custom hotkeys; saved automatically across sessions.
+- 🚫 Intelligent Key Clash Prevention: Avoid duplicate keybindings with automatic conflict resolution.
+- 🔒 100% Private & Local: Video frames are composited client-side in memory. Zero video or audio is ever uploaded to any cloud server.
 
 ---
 
@@ -38,25 +43,14 @@ HOW TO USE:
 
 | Permission | Justification |
 | :--- | :--- |
-| `storage` | Saves user preferences locally, including meme duration, anti-spam cooldown time, active toggle state, and debug HUD display settings. |
-| `https://meet.google.com/*` (host_permission) | Required to inject the visual meme overlay onto the Google Meet webpage and detect hand gestures locally while in an active meeting. |
+| `storage` | Saves user-configured memes, custom hotkey bindings, sound preferences, and HUD display state locally. |
+| `unlimitedStorage` | Allows saving offline base64 data URLs for user-uploaded custom meme GIFs without quota errors. |
+| `<all_urls>` (host_permissions) | Required to inject the floating HUD and camera compositor into web-based video calling platforms in Google Chrome. |
 
 ---
 
 ## 3. Privacy & Data Use Disclosure
 
-- **Camera / Video Access:** Used solely for local client-side hand tracking with MediaPipe Tasks Vision. Video frames never leave the user's browser, are never transmitted to any external server, and are discarded immediately after landmark classification.
-- **Audio / Meeting Data:** No audio is accessed or captured. No meeting links, attendee identities, chat contents, or credentials are read or stored.
+- **Camera / Video Access:** Used solely for local client-side frame compositing on the user's active camera feed. Frames never leave browser memory.
+- **Audio / Meeting Data:** No audio is recorded or stored. No meeting links, attendee identities, chat contents, or credentials are read.
 - **Analytics / Tracking:** None. No third-party trackers or telemetry services are included.
-
----
-
-## 4. Version History
-
-- **v1.0.0** (2026-10-04)
-  - Initial MVP release.
-  - MediaPipe Hand Landmarker integration with geometric pose classifier.
-  - Three gestures: Thumbs Up, Victory, and Open Palm.
-  - Anti-spam state machine (IDLE -> DETECTING -> CONFIRMED -> TRIGGERED -> COOLDOWN).
-  - React Popup settings UI with real-time status.
-  - Standalone Gesture Test Lab sandbox page.
