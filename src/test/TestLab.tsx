@@ -285,6 +285,18 @@ export const TestLab: React.FC = () => {
                 <span>🙌 Both Hands Up</span>
                 <span className="key-badge">4</span>
               </button>
+              <button className="hotkey-btn" onClick={() => triggerManual('rock_on')}>
+                <span>🤘 Rock On</span>
+                <span className="key-badge">5</span>
+              </button>
+              <button className="hotkey-btn" onClick={() => triggerManual('pointing_up')}>
+                <span>☝️ Pointing Up</span>
+                <span className="key-badge">6</span>
+              </button>
+              <button className="hotkey-btn" onClick={() => triggerManual('ok_sign')}>
+                <span>👌 OK Sign</span>
+                <span className="key-badge">7</span>
+              </button>
             </div>
           </div>
 

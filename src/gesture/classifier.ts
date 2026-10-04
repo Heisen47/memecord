@@ -118,6 +118,51 @@ export function classifyHandPose(landmarks: Landmark[], handedness?: 'Left' | 'R
     };
   }
 
+  // 4. ROCK ON CHECK (🤘)
+  // Index and pinky extended, middle and ring curled
+  const isRockOn = indexExt && pinkyExt && middleCurl && ringCurl;
+  if (isRockOn && distance(indexTip, pinkyTip) > 0.05) {
+    return {
+      gesture: 'rock_on',
+      confidence: 0.93,
+      landmarks,
+      handedness
+    };
+  }
+
+  // 5. POINTING UP CHECK (☝️)
+  // Index extended upwards, other 3 fingers curled, index is clearly above thumb
+  const isPointingUp =
+    indexExt &&
+    middleCurl &&
+    ringCurl &&
+    pinkyCurl &&
+    indexTip.y < indexPip.y - 0.03 &&
+    indexTip.y < thumbTip.y;
+
+  if (isPointingUp) {
+    return {
+      gesture: 'pointing_up',
+      confidence: 0.92,
+      landmarks,
+      handedness
+    };
+  }
+
+  // 6. OK SIGN CHECK (👌)
+  // Thumb tip and index tip pinched together, other 3 fingers extended
+  const thumbIndexPinch = distance(thumbTip, indexTip) < 0.045;
+  const threeFingersExtended = middleExt && ringExt && pinkyExt;
+
+  if (thumbIndexPinch && threeFingersExtended) {
+    return {
+      gesture: 'ok_sign',
+      confidence: 0.91,
+      landmarks,
+      handedness
+    };
+  }
+
   return {
     gesture: 'none',
     confidence: 0,

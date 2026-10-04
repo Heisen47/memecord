@@ -1,8 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { getSettings, saveSettings } from '../shared/storage';
-import { AppSettings, CameraStatusInfo, GestureType } from '../shared/types';
-import { DEFAULT_SETTINGS } from '../shared/config';
-import { ShieldCheck, ExternalLink, Sparkles, CheckCircle2 } from 'lucide-react';
+import { AppSettings, CameraStatusInfo, GestureType, MemeItemConfig } from '../shared/types';
+import { DEFAULT_SETTINGS, GESTURE_DEFINITIONS, PRESET_MEMES } from '../shared/config';
+import {
+  ShieldCheck,
+  ExternalLink,
+  Sparkles,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  Link as LinkIcon,
+  Play
+} from 'lucide-react';
 
 export const Popup: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -11,6 +20,7 @@ export const Popup: React.FC = () => {
     permissionGranted: false
   });
   const [testedGesture, setTestedGesture] = useState<string | null>(null);
+  const [expandedGesture, setExpandedGesture] = useState<string | null>(null);
 
   useEffect(() => {
     // Load initial settings
@@ -52,6 +62,51 @@ export const Popup: React.FC = () => {
     setSettings(updated);
   };
 
+  const handleSelectPreset = async (gestureKey: Exclude<GestureType, 'none'>, presetId: string) => {
+    if (presetId === 'custom') {
+      setExpandedGesture(gestureKey);
+      return;
+    }
+
+    const preset = PRESET_MEMES.find((p) => p.id === presetId);
+    if (!preset) return;
+
+    const currentConfig = settings.memes[gestureKey] || DEFAULT_SETTINGS.memes[gestureKey];
+    const updatedMeme: MemeItemConfig = {
+      ...currentConfig,
+      asset: preset.asset,
+      title: preset.name,
+      emoji: preset.emoji
+    };
+
+    const updated = await saveSettings({
+      memes: {
+        ...settings.memes,
+        [gestureKey]: updatedMeme
+      }
+    });
+    setSettings(updated);
+  };
+
+  const handleUpdateCustomMeme = async (
+    gestureKey: Exclude<GestureType, 'none'>,
+    updates: Partial<MemeItemConfig>
+  ) => {
+    const currentConfig = settings.memes[gestureKey] || DEFAULT_SETTINGS.memes[gestureKey];
+    const updatedMeme: MemeItemConfig = {
+      ...currentConfig,
+      ...updates
+    };
+
+    const updated = await saveSettings({
+      memes: {
+        ...settings.memes,
+        [gestureKey]: updatedMeme
+      }
+    });
+    setSettings(updated);
+  };
+
   const handleTriggerTest = async (gesture: Exclude<GestureType, 'none'>) => {
     setTestedGesture(gesture);
     setTimeout(() => setTestedGesture(null), 1200);
@@ -75,11 +130,13 @@ export const Popup: React.FC = () => {
     }
   };
 
-  const gestures: Array<{ key: Exclude<GestureType, 'none'>; emoji: string; name: string }> = [
-    { key: 'thumbs_up', emoji: '👍', name: 'Thumbs Up' },
-    { key: 'victory', emoji: '✌️', name: 'Victory / Peace' },
-    { key: 'open_palm', emoji: '🖐', name: 'Open Palm' }
-  ];
+  const resolveThumbUrl = (asset: string) => {
+    if (asset.startsWith('http') || asset.startsWith('data:')) return asset;
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL(asset.replace(/^\//, ''));
+    }
+    return asset.startsWith('/') ? asset : `/${asset}`;
+  };
 
   return (
     <div className="popup-container">
@@ -113,32 +170,136 @@ export const Popup: React.FC = () => {
         </label>
       </div>
 
-      {/* Gesture Mappings */}
+      {/* Gesture Mappings Customizer */}
       <section>
-        <div className="section-title">Gesture Mappings</div>
+        <div className="section-header-row">
+          <div className="section-title">Custom Gesture Mappings ({GESTURE_DEFINITIONS.length})</div>
+        </div>
         <div className="mappings-list">
-          {gestures.map((item) => {
-            const config = settings.memes[item.key];
-            const isJustTested = testedGesture === item.key;
+          {GESTURE_DEFINITIONS.map((def) => {
+            const currentMeme = settings.memes[def.key] || DEFAULT_SETTINGS.memes[def.key];
+            const isJustTested = testedGesture === def.key;
+            const isExpanded = expandedGesture === def.key;
+
+            // Determine if current asset matches a preset
+            const matchingPreset = PRESET_MEMES.find((p) => p.asset === currentMeme.asset);
+            const selectValue = matchingPreset ? matchingPreset.id : 'custom';
+
             return (
-              <div key={item.key} className="mapping-item">
-                <div className="mapping-info">
-                  <div className="mapping-emoji">{item.emoji}</div>
-                  <div>
-                    <div className="mapping-name">{item.name}</div>
-                    <div className="mapping-target">
-                      <span className="mapping-arrow">&rarr; </span>
-                      {config?.title || item.key}
+              <div key={def.key} className={`mapping-item ${isExpanded ? 'expanded' : ''}`}>
+                <div className="mapping-item-main">
+                  <div className="mapping-info">
+                    <div className="mapping-emoji">{def.emoji}</div>
+                    <div>
+                      <div className="mapping-name">{def.name}</div>
+                      <div className="mapping-desc">{def.description}</div>
                     </div>
                   </div>
+
+                  <div className="mapping-actions">
+                    <button
+                      className="test-btn"
+                      onClick={() => handleTriggerTest(def.key)}
+                      title="Test trigger in Google Meet"
+                    >
+                      {isJustTested ? (
+                        <CheckCircle2 size={12} color="#4ade80" />
+                      ) : (
+                        <Play size={11} />
+                      )}
+                    </button>
+                    <button
+                      className="expand-btn"
+                      onClick={() => setExpandedGesture(isExpanded ? null : def.key)}
+                      title="Customize Meme"
+                    >
+                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    </button>
+                  </div>
                 </div>
-                <button
-                  className="test-btn"
-                  onClick={() => handleTriggerTest(item.key)}
-                  title="Test trigger in active Google Meet tab"
-                >
-                  {isJustTested ? <CheckCircle2 size={13} color="#4ade80" /> : 'Test'}
-                </button>
+
+                {/* Preset Selector Row */}
+                <div className="mapping-selector-row">
+                  <span className="target-label">Meme:</span>
+                  <select
+                    className="meme-select"
+                    value={selectValue}
+                    onChange={(e) => handleSelectPreset(def.key, e.target.value)}
+                  >
+                    {PRESET_MEMES.map((preset) => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.emoji} {preset.name}
+                      </option>
+                    ))}
+                    <option value="custom">🌐 Custom URL / GIF...</option>
+                  </select>
+                </div>
+
+                {/* Collapsible Custom Editor */}
+                {isExpanded && (
+                  <div className="custom-editor">
+                    <div className="editor-group">
+                      <label>GIF / Image URL or Local Path</label>
+                      <div className="input-with-icon">
+                        <LinkIcon size={12} className="input-icon" />
+                        <input
+                          type="text"
+                          placeholder="https://... or memes/custom.gif"
+                          value={currentMeme.asset}
+                          onChange={(e) =>
+                            handleUpdateCustomMeme(def.key, { asset: e.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="editor-row-dual">
+                      <div className="editor-group">
+                        <label>Overlay Title</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Awesome!"
+                          value={currentMeme.title || ''}
+                          onChange={(e) =>
+                            handleUpdateCustomMeme(def.key, { title: e.target.value })
+                          }
+                        />
+                      </div>
+                      <div className="editor-group emoji-group">
+                        <label>Emoji</label>
+                        <input
+                          type="text"
+                          maxLength={3}
+                          value={currentMeme.emoji || '✨'}
+                          onChange={(e) =>
+                            handleUpdateCustomMeme(def.key, { emoji: e.target.value })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    {/* Preview Thumbnail */}
+                    <div className="preview-container">
+                      <span className="preview-label">Live Preview:</span>
+                      <div className="preview-bubble">
+                        <img
+                          src={resolveThumbUrl(currentMeme.asset)}
+                          alt="preview"
+                          className="preview-img"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                          onLoad={(e) => {
+                            (e.target as HTMLElement).style.display = 'block';
+                          }}
+                        />
+                        <span className="preview-text">
+                          {currentMeme.emoji || '✨'} {currentMeme.title || def.name}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })}
@@ -147,7 +308,7 @@ export const Popup: React.FC = () => {
 
       {/* Settings Grid */}
       <section>
-        <div className="section-title">Settings</div>
+        <div className="section-title">Behavior Settings</div>
         <div className="settings-grid">
           <div className="setting-card">
             <label htmlFor="duration-select">Meme Duration</label>
@@ -195,7 +356,7 @@ export const Popup: React.FC = () => {
       <div className="privacy-box">
         <ShieldCheck className="privacy-icon" size={16} />
         <div>
-          <strong>Privacy First:</strong> Your camera is processed 100% locally in your browser for gesture detection. Video frames are never uploaded or saved.
+          <strong>Privacy First:</strong> Camera processed 100% locally on device. No video frames or images are ever uploaded.
         </div>
       </div>
 
