@@ -132,7 +132,18 @@ export class FloatingDock {
     countBadge.textContent = `${this.memes.length}`;
     this.countBadge = countBadge;
 
+    const logoImg = document.createElement('img');
+    logoImg.src = resolveThumbUrl('icons/logo.png');
+    logoImg.className = 'memecord-deck-logo-img';
+    logoImg.alt = 'Memecord';
+    logoImg.style.width = '20px';
+    logoImg.style.height = '20px';
+    logoImg.style.borderRadius = '50%';
+    logoImg.style.objectFit = 'cover';
+    logoImg.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+
     brand.appendChild(dragGrip);
+    brand.appendChild(logoImg);
     brand.appendChild(dot);
     brand.appendChild(title);
     brand.appendChild(countBadge);
@@ -194,10 +205,25 @@ export class FloatingDock {
     });
     actions.appendChild(addBtn);
 
-    // Close / Minimize Button
+    // Minimize Button (Dedicated)
+    const minBtn = document.createElement('button');
+    minBtn.className = 'memecord-deck-action-btn minimize-btn';
+    minBtn.title = 'Minimize HUD (Alt+M)';
+    minBtn.innerHTML = `
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+        <line x1="4" y1="12" x2="20" y2="12"></line>
+      </svg>
+    `;
+    minBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setMinimized(true);
+    });
+    actions.appendChild(minBtn);
+
+    // Close Button
     const closeBtn = document.createElement('button');
     closeBtn.className = 'memecord-deck-action-btn close-btn';
-    closeBtn.title = 'Minimize Deck (Press Alt+M to reopen)';
+    closeBtn.title = 'Close HUD (Alt+M)';
     closeBtn.textContent = '✕';
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -260,15 +286,19 @@ export class FloatingDock {
     parent.appendChild(deck);
     this.element = deck;
 
-    // 2. Minimized Summon Pebble (Dynamic Island style)
+    // 2. Minimized Summon Pebble with Logo from public/icons
     const bubble = document.createElement('div');
     bubble.className = 'memecord-summon-bubble';
-    bubble.title = 'Open Memecord Deck (Alt+M)';
+    bubble.title = 'Memecord HUD Minimized - Click to open (Alt+M)';
+    const logoUrl = resolveThumbUrl('icons/logo.png');
     bubble.innerHTML = `
-      <span class="memecord-status-dot"></span>
-      <span class="memecord-summon-icon">🎭</span>
-      <span class="memecord-summon-label">Memecord Deck</span>
-      <span class="memecord-summon-key">Alt+M</span>
+      <div class="memecord-summon-logo-wrap">
+        <img src="${logoUrl}" class="memecord-summon-logo-img" alt="Memecord Logo" />
+      </div>
+      <div class="memecord-summon-content">
+        <span class="memecord-summon-label">Memecord</span>
+        <span class="memecord-summon-key">Alt+M</span>
+      </div>
     `;
     bubble.style.display = 'none';
     bubble.addEventListener('click', (e) => {
@@ -354,7 +384,7 @@ export class FloatingDock {
         card.appendChild(hotkeyBadge);
       }
 
-      // Thumbnail / Visual Preview
+      // Thumbnail / Visual Preview (No emojis)
       const thumbWrap = document.createElement('div');
       thumbWrap.className = 'memecord-card-thumb-wrap';
 
@@ -365,17 +395,11 @@ export class FloatingDock {
       img.loading = 'lazy';
       img.src = thumbUrl;
 
-      const emojiFallback = document.createElement('span');
-      emojiFallback.className = 'memecord-card-emoji-fallback';
-      emojiFallback.textContent = meme.emoji || '✨';
-
       img.onerror = () => {
-        img.style.display = 'none';
-        emojiFallback.style.display = 'flex';
+        img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23818cf8' stroke-width='1.5'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E";
       };
 
       thumbWrap.appendChild(img);
-      thumbWrap.appendChild(emojiFallback);
       card.appendChild(thumbWrap);
 
       // Meme Name
@@ -444,6 +468,21 @@ export class FloatingDock {
 
     let selectedKey = (meme.hotkey || assignDefaultHotkey(0)).toUpperCase();
 
+    const presets = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Q', 'W', 'E', 'R', 'T', 'Y', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
+    const presetButtons = presets
+      .map((k) => {
+        const takenBy = this.memes.find((m) => m.id !== meme.id && (m.hotkey || '').toUpperCase() === k);
+        const isCurrent = (meme.hotkey || '').toUpperCase() === k;
+        const classes = [
+          'memecord-quick-key-btn',
+          k === selectedKey ? 'active' : '',
+          takenBy ? 'taken' : ''
+        ].filter(Boolean).join(' ');
+        const title = takenBy ? `Taken by "${takenBy.name}"` : isCurrent ? 'Current key' : 'Available';
+        return `<button class="${classes}" data-key="${k}" title="${title}">${k}</button>`;
+      })
+      .join('');
+
     const modal = document.createElement('div');
     modal.className = 'memecord-keybind-modal';
     modal.innerHTML = `
@@ -453,8 +492,8 @@ export class FloatingDock {
       </div>
 
       <div style="text-align: center; margin: 12px 0 14px 0;">
-        <div style="font-size: 32px; line-height: 1;">${meme.emoji || '✨'}</div>
-        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 6px;">${meme.name}</div>
+        <img src="${resolveThumbUrl(meme.assetUrl)}" alt="${meme.name}" style="width: 48px; height: 48px; border-radius: 10px; object-fit: cover; margin: 0 auto; display: block; border: 1.5px solid rgba(129, 140, 248, 0.4); background: rgba(0,0,0,0.3);" />
+        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 8px;">${meme.name}</div>
         <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Press any key on keyboard or select below</div>
 
         <div class="memecord-keybind-display-box" id="memecord-keybind-box">
@@ -462,13 +501,13 @@ export class FloatingDock {
           <span class="memecord-keybind-large-key" id="memecord-keybind-val">${selectedKey}</span>
           <span class="memecord-keybind-press-hint">⌨️ Press any key now...</span>
         </div>
+
+        <div class="memecord-keybind-status" id="memecord-keybind-status"></div>
       </div>
 
-      <div style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 6px;">Quick Presets:</div>
+      <div style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 6px;">Quick Presets (Taken keys marked dashed):</div>
       <div class="memecord-keybind-quick-grid" id="memecord-quick-grid">
-        ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Q', 'W', 'E', 'R', 'T', 'Y', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B']
-          .map((k) => `<button class="memecord-quick-key-btn ${k === selectedKey ? 'active' : ''}" data-key="${k}">${k}</button>`)
-          .join('')}
+        ${presetButtons}
       </div>
 
       <div class="memecord-modal-btn-row" style="margin-top: 16px;">
@@ -481,6 +520,9 @@ export class FloatingDock {
     this.activeModal = modal;
 
     const valEl = modal.querySelector('#memecord-keybind-val') as HTMLElement;
+    const boxEl = modal.querySelector('#memecord-keybind-box') as HTMLElement;
+    const statusEl = modal.querySelector('#memecord-keybind-status') as HTMLElement;
+    const saveBtn = modal.querySelector('#memecord-keybind-save') as HTMLButtonElement;
     const quickGrid = modal.querySelector('#memecord-quick-grid') as HTMLElement;
 
     const selectKey = (k: string) => {
@@ -490,8 +532,29 @@ export class FloatingDock {
         const btn = el as HTMLElement;
         btn.classList.toggle('active', btn.dataset.key === selectedKey);
       });
+
+      const clashing = this.memes.find((m) => m.id !== meme.id && (m.hotkey || '').toUpperCase() === selectedKey);
+      if (clashing) {
+        statusEl.textContent = `⚠️ Key [${selectedKey}] is already assigned to "${clashing.name}". Change old one first.`;
+        statusEl.className = 'memecord-keybind-status error';
+        boxEl.classList.add('clash');
+        saveBtn.disabled = true;
+        saveBtn.style.opacity = '0.4';
+        saveBtn.style.cursor = 'not-allowed';
+      } else {
+        const isCurrent = (meme.hotkey || '').toUpperCase() === selectedKey;
+        statusEl.textContent = isCurrent ? `✓ Current key for this meme` : `✓ Key [${selectedKey}] is available!`;
+        statusEl.className = 'memecord-keybind-status success';
+        boxEl.classList.remove('clash');
+        saveBtn.disabled = false;
+        saveBtn.style.opacity = '1';
+        saveBtn.style.cursor = 'pointer';
+      }
       playHapticSound('pop');
     };
+
+    // Initialize status for current key
+    selectKey(selectedKey);
 
     // Quick keys click handler
     quickGrid.addEventListener('click', (e) => {
@@ -526,6 +589,15 @@ export class FloatingDock {
     };
 
     const saveAndClose = () => {
+      const clashing = this.memes.find((m) => m.id !== meme.id && (m.hotkey || '').toUpperCase() === selectedKey);
+      if (clashing) {
+        playHapticSound('delete');
+        statusEl.textContent = `⚠️ Key [${selectedKey}] already assigned to "${clashing.name}"!`;
+        statusEl.className = 'memecord-keybind-status error';
+        boxEl.classList.add('clash');
+        return;
+      }
+
       if (selectedKey) {
         this.callbacks.onUpdateHotkey?.(meme.id, selectedKey);
         playHapticSound('pop');
@@ -535,7 +607,7 @@ export class FloatingDock {
 
     modal.querySelector('#memecord-keybind-close-btn')?.addEventListener('click', cleanup);
     modal.querySelector('#memecord-keybind-cancel')?.addEventListener('click', cleanup);
-    modal.querySelector('#memecord-keybind-save')?.addEventListener('click', saveAndClose);
+    saveBtn.addEventListener('click', saveAndClose);
   }
 
   private closeActiveModal() {

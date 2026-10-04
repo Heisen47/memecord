@@ -1,5 +1,6 @@
 import { AppSettings, MemeItem } from './types';
 import { DEFAULT_SETTINGS } from './config';
+import { assignDefaultHotkey } from './media-resolver';
 
 const STORAGE_KEY = 'memecord_settings';
 const LEGACY_KEY = 'mememeet_settings';
@@ -148,15 +149,36 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<AppS
   return updated;
 }
 
+export function findClashingMeme(
+  memes: MemeItem[],
+  hotkey: string,
+  currentMemeId?: string
+): MemeItem | undefined {
+  const cleanKey = hotkey.trim().toUpperCase();
+  if (!cleanKey) return undefined;
+  return memes.find((m, idx) => {
+    if (m.id === currentMemeId) return false;
+    const existingKey = (m.hotkey || assignDefaultHotkey(idx)).trim().toUpperCase();
+    return existingKey === cleanKey;
+  });
+}
+
 export async function addMeme(meme: MemeItem): Promise<AppSettings> {
   const current = await getSettings();
+  const cleanKey = (meme.hotkey || '').trim().toUpperCase();
+  if (cleanKey) {
+    const clashing = findClashingMeme(current.memes, cleanKey, meme.id);
+    if (clashing) {
+      throw new Error(`Key [${cleanKey}] is already assigned to "${clashing.name}". Change old one first.`);
+    }
+  }
   const existingIndex = current.memes.findIndex((m) => m.id === meme.id);
   let updatedMemes: MemeItem[];
   if (existingIndex >= 0) {
     updatedMemes = [...current.memes];
-    updatedMemes[existingIndex] = meme;
+    updatedMemes[existingIndex] = { ...meme, hotkey: cleanKey };
   } else {
-    updatedMemes = [...current.memes, meme];
+    updatedMemes = [...current.memes, { ...meme, hotkey: cleanKey }];
   }
   return saveSettings({ memes: updatedMemes });
 }
@@ -170,6 +192,13 @@ export async function removeMeme(memeId: string): Promise<AppSettings> {
 export async function updateMemeHotkey(memeId: string, newHotkey: string): Promise<AppSettings> {
   const current = await getSettings();
   const cleanKey = newHotkey.trim().toUpperCase();
+  if (!cleanKey) {
+    throw new Error('Key cannot be empty');
+  }
+  const clashing = findClashingMeme(current.memes, cleanKey, memeId);
+  if (clashing) {
+    throw new Error(`Key [${cleanKey}] is already assigned to "${clashing.name}". Change old one first.`);
+  }
   const updatedMemes = current.memes.map((m) => {
     if (m.id === memeId) {
       return { ...m, hotkey: cleanKey };
@@ -178,4 +207,5 @@ export async function updateMemeHotkey(memeId: string, newHotkey: string): Promi
   });
   return saveSettings({ memes: updatedMemes });
 }
+
 

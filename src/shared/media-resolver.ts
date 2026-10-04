@@ -17,6 +17,25 @@ export function assignDefaultHotkey(index: number): string {
   return letterIndex < letters.length ? letters[letterIndex] : '';
 }
 
+export function findFirstAvailableHotkey(existingMemes: { hotkey?: string }[]): string {
+  const assigned = new Set(
+    existingMemes
+      .map((m, idx) => (m.hotkey || assignDefaultHotkey(idx)).trim().toUpperCase())
+      .filter(Boolean)
+  );
+  const candidates = [
+    '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P',
+    'A', 'S', 'D', 'F', 'G', 'H', 'J', 'K', 'L',
+    'Z', 'X', 'C', 'V', 'B', 'N', 'M'
+  ];
+  for (const c of candidates) {
+    if (!assigned.has(c)) return c;
+  }
+  return '';
+}
+
+
 export async function resolveMediaUrl(rawUrl: string): Promise<ResolvedMedia> {
   const trimmed = rawUrl.trim();
   if (!trimmed) {

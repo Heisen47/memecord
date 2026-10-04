@@ -11,6 +11,8 @@ export class OverlayController {
   private isDestroyed: boolean = false;
   private isInCall: boolean = false;
   private isCameraStreaming: boolean = false;
+  private isAudioStreaming: boolean = false;
+  private isWebRtcConnected: boolean = false;
   private callCheckIntervalId: any = null;
   private spaObserver: MutationObserver | null = null;
 
@@ -59,13 +61,13 @@ export class OverlayController {
     // 4. Setup Storage and Message Listeners
     this.setupListeners();
 
-    // 5. Monitor Call State
+    // 5. Monitor Call State (detects ongoing calls with or without camera)
     this.setupCallStateMonitoring();
 
     // Check immediately
     this.checkCallState();
 
-    console.log('[Memecord] Call-sensitive Overlay Controller initialized.');
+    console.log('[Memecord] Call-sensitive Overlay Controller initialized (supports cam & no-cam calls).');
   }
 
   public async triggerMeme(meme: MemeItem) {
@@ -116,116 +118,159 @@ export class OverlayController {
     );
   }
 
-  private isOngoingVideoCall(): boolean {
+  private isOngoingCall(): boolean {
     // 1. Always active in test sandbox
     if (this.isTestLab()) {
       return true;
     }
 
-    // 2. Active if webcam stream is running via inject compositor
-    if (this.isCameraStreaming) {
+    // 2. Active if webcam or microphone stream is running in page
+    if (this.isCameraStreaming || this.isAudioStreaming) {
+      return true;
+    }
+
+    // 3. Active if WebRTC peer connection is actively connected
+    if (this.isWebRtcConnected) {
       return true;
     }
 
     const host = window.location.hostname;
     const path = window.location.pathname;
 
-    // 3. Google Meet
+    // 4. Google Meet (detects calls even with camera turned off / mic muted)
     if (host.includes('meet.google.com')) {
       const isMeetingUrl = /^\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i.test(path) || path.includes('/_meet/');
       if (!isMeetingUrl) return false;
 
-      // In lobby if join button exists
+      // In lobby/green room if join button exists
       const inLobby = Boolean(
-        document.querySelector('button[aria-label*="Join now" i], button[aria-label*="Ask to join" i]')
+        document.querySelector(
+          'button[jsname="Qx7uuf"], button[aria-label*="Join" i], button[aria-label*="Ask to join" i], button[aria-label*="Unirse" i], button[aria-label*="Participer" i]'
+        )
       );
       if (inLobby) return false;
 
-      // In call if leave button or call controls exist
-      const hasLeave = Boolean(
+      // Call ended screen
+      const callEnded = Boolean(
+        document.querySelector('div[data-call-ended="true"], button[aria-label*="Rejoin" i]')
+      );
+      if (callEnded) return false;
+
+      // In call if leave button or call controls exist (language-independent jsname + multi-lingual aria labels)
+      const hasMeetControls = Boolean(
         document.querySelector(
-          'button[aria-label*="Leave call" i], button[data-tooltip*="Leave call" i], button[aria-label*="End call" i]'
+          'button[jsname="CQylAd"], button[jsname="B1qRre"], button[jsname="A17eec"], button[jsname="E90pfb"], ' +
+          'button[aria-label*="Leave call" i], button[data-tooltip*="Leave call" i], button[aria-label*="End call" i], ' +
+          'button[aria-label*="camera" i], button[aria-label*="cámara" i], button[aria-label*="kamera" i], ' +
+          'button[aria-label*="microphone" i], button[aria-label*="micrófono" i], button[aria-label*="mikrofon" i], ' +
+          'button[aria-label*="Raise hand" i], div[data-meeting-title], div[data-allocation-index], div[data-participant-id]'
         )
       );
-      const hasControls = Boolean(
-        document.querySelector(
-          'button[aria-label*="Turn off microphone" i], button[aria-label*="Turn on microphone" i], button[aria-label*="Turn off camera" i], button[aria-label*="Raise hand" i]'
-        )
-      );
-      return hasLeave || hasControls;
+      return hasMeetControls || !inLobby;
     }
 
-    // 4. Discord Web
+    // 5. Discord Web (voice channels, voice calls, or video calls)
     if (host.includes('discord.com')) {
-      const hasDisconnect = Boolean(
-        document.querySelector('button[aria-label*="Disconnect" i], button[aria-label*="Leave Call" i]')
+      const inVoiceOrCall = Boolean(
+        document.querySelector(
+          'div[class*="rtcConnectionStatus"], div[aria-label*="Voice Connected" i], ' +
+          'div[class*="voiceUsers"], div[class*="connection_"], section[aria-label*="Voice" i], ' +
+          'button[aria-label*="Disconnect" i], button[aria-label*="Leave Call" i], ' +
+          'div[class*="videoGrid"], div[class*="callContainer"], div[class*="wrapperInCall"]'
+        )
       );
-      const inVideoGrid = Boolean(
-        document.querySelector('div[class*="videoGrid"], div[class*="callContainer"], div[class*="wrapperInCall"]')
-      );
-      return hasDisconnect || inVideoGrid;
+      return inVoiceOrCall;
     }
 
-    // 5. Zoom Web Client
+    // 6. Zoom Web Client
     if (host.includes('zoom.us')) {
-      if (!path.includes('/wc/')) return false;
+      if (!path.includes('/wc/') && !path.includes('/j/')) return false;
       const inCall = Boolean(
-        document.querySelector('button[aria-label*="Leave" i], button[aria-label*="End" i], .footer-button__button--leave')
+        document.querySelector(
+          '#foot-bar, .footer-button-container, button[aria-label*="Leave" i], button[aria-label*="End" i], ' +
+          'button[aria-label*="audio" i], button[aria-label*="mute" i], button[aria-label*="video" i], #meeting-app, .meeting-app'
+        )
       );
       return inCall;
     }
 
-    // 6. Microsoft Teams
+    // 7. Microsoft Teams
     if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) {
       const inCall = Boolean(
-        document.querySelector('button[aria-label*="Leave" i], button#hangup-button, button[id*="hangup"]')
+        document.querySelector(
+          'button#hangup-button, button[id*="hangup"], button[aria-label*="Leave" i], button[aria-label*="Hang up" i], ' +
+          'div[data-tid="call-controls"], div[id*="calling-bar"], div[class*="calling-unified-bar"]'
+        )
       );
       return inCall;
     }
 
-    // 7. Slack Calls / Huddles
+    // 8. Slack Calls / Huddles
     if (host.includes('slack.com')) {
       const inCall = Boolean(
-        document.querySelector('button[data-qa*="leave" i], button[aria-label*="Leave call" i], div[data-qa*="huddle"]')
+        document.querySelector(
+          'button[data-qa*="leave" i], button[aria-label*="Leave call" i], div[data-qa*="huddle"], div[data-qa*="call_container"], div[class*="c-huddle"]'
+        )
       );
       return inCall;
     }
 
-    // 8. FaceTime Web
+    // 9. FaceTime Web
     if (host.includes('facetime.apple.com')) {
       const inCall = Boolean(
-        document.querySelector('button[aria-label*="Leave" i], button[aria-label*="End" i]')
+        document.querySelector(
+          'button[aria-label*="Leave" i], button[aria-label*="End" i], button[aria-label*="Camera" i], button[aria-label*="Microphone" i]'
+        )
       );
       return inCall;
     }
 
-    // Not in a video call on any known meeting platform
+    // 10. WhatsApp Web
+    if (host.includes('web.whatsapp.com')) {
+      const inCall = Boolean(
+        document.querySelector(
+          'div[data-testid="call-container"], button[aria-label*="End call" i], div[data-testid*="call"]'
+        )
+      );
+      return inCall;
+    }
+
+    // Not in an active call on any supported platform
     return false;
   }
 
   private checkCallState() {
-    const inCall = this.isOngoingVideoCall();
+    const inCall = this.isOngoingCall();
 
     if (inCall && !this.isInCall) {
       this.isInCall = true;
-      console.log('[Memecord] Ongoing video call detected -> showing HUD & enabling hotkeys');
+      console.log('[Memecord] Ongoing call detected (cam or no-cam) -> showing HUD & enabling hotkeys');
       if (this.settings?.dockVisible && this.settings.enabled) {
         this.overlay?.setDockVisible(true);
       }
       this.overlay?.showToast('🎭 Memecord Active! Press 1–9 or click dock');
     } else if (!inCall && this.isInCall) {
       this.isInCall = false;
-      console.log('[Memecord] Call ended / outside video call -> hiding HUD');
+      console.log('[Memecord] Call ended / outside call -> hiding HUD');
       this.overlay?.setDockVisible(false);
     }
   }
 
   private setupCallStateMonitoring() {
-    // 1. Listen for camera stream changes from inject.ts
+    // 1. Listen for stream and connection changes from inject.ts
     window.addEventListener('message', (event) => {
-      if (event.data?.source === 'MEMECORD_CAMERA' && event.data?.type === 'CAMERA_CALL_STATE') {
-        this.isCameraStreaming = Boolean(event.data.active);
-        this.checkCallState();
+      if (event.data?.source === 'MEMECORD_CAMERA') {
+        if (event.data.type === 'CALL_STREAM_STATE') {
+          this.isCameraStreaming = Boolean(event.data.hasVideo);
+          this.isAudioStreaming = Boolean(event.data.hasAudio);
+          this.checkCallState();
+        } else if (event.data.type === 'CAMERA_CALL_STATE') {
+          this.isCameraStreaming = Boolean(event.data.active);
+          this.checkCallState();
+        } else if (event.data.type === 'WEBRTC_CALL_STATE') {
+          this.isWebRtcConnected = Boolean(event.data.active);
+          this.checkCallState();
+        }
       }
     });
 

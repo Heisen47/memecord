@@ -301,11 +301,145 @@ interface ActiveCameraMeme {
     console.log(`[Memecord Camera] Activated meme on camera feed: ${meme.name} (${isVideo ? 'Video' : 'GIF/Image'})`);
   }
 
+  const activeAudioTrackIds = new Set<string>();
+  const activeVideoTrackIds = new Set<string>();
+
+  function broadcastCallStreamState() {
+    const hasAudio = activeAudioTrackIds.size > 0;
+    const hasVideo = activeVideoTrackIds.size > 0;
+    const active = hasAudio || hasVideo;
+
+    window.postMessage(
+      {
+        source: 'MEMECORD_CAMERA',
+        type: 'CALL_STREAM_STATE',
+        active,
+        hasAudio,
+        hasVideo
+      },
+      '*'
+    );
+
+    // Keep CAMERA_CALL_STATE in sync for backward compatibility
+    window.postMessage(
+      {
+        source: 'MEMECORD_CAMERA',
+        type: 'CAMERA_CALL_STATE',
+        active: hasVideo
+      },
+      '*'
+    );
+  }
+
+  function trackMediaStreamTracks(stream: MediaStream) {
+    if (!stream) return;
+
+    stream.getAudioTracks().forEach((track) => {
+      activeAudioTrackIds.add(track.id);
+      broadcastCallStreamState();
+
+      const origStop = track.stop.bind(track);
+      track.stop = () => {
+        activeAudioTrackIds.delete(track.id);
+        broadcastCallStreamState();
+        origStop();
+      };
+
+      track.addEventListener('ended', () => {
+        activeAudioTrackIds.delete(track.id);
+        broadcastCallStreamState();
+      });
+    });
+
+    stream.getVideoTracks().forEach((track) => {
+      activeVideoTrackIds.add(track.id);
+      broadcastCallStreamState();
+
+      const origStop = track.stop.bind(track);
+      track.stop = () => {
+        activeVideoTrackIds.delete(track.id);
+        broadcastCallStreamState();
+        origStop();
+      };
+
+      track.addEventListener('ended', () => {
+        activeVideoTrackIds.delete(track.id);
+        broadcastCallStreamState();
+      });
+    });
+  }
+
+  // Hook WebRTC RTCPeerConnection to detect ongoing calls even without camera
+  if (typeof window !== 'undefined' && (window as any).RTCPeerConnection) {
+    try {
+      const OrigPeerConnection = (window as any).RTCPeerConnection;
+      const activeConnections = new Set<any>();
+
+      const broadcastWebRtcState = () => {
+        window.postMessage(
+          {
+            source: 'MEMECORD_CAMERA',
+            type: 'WEBRTC_CALL_STATE',
+            active: activeConnections.size > 0
+          },
+          '*'
+        );
+      };
+
+      const WrappedRTCPeerConnection = function (this: any, ...args: any[]) {
+        const pc = new OrigPeerConnection(...args);
+
+        const checkConnection = () => {
+          const isConnected =
+            pc.connectionState === 'connected' ||
+            pc.iceConnectionState === 'connected' ||
+            pc.iceConnectionState === 'completed';
+
+          const isTerminated =
+            pc.connectionState === 'closed' ||
+            pc.connectionState === 'failed' ||
+            pc.connectionState === 'disconnected' ||
+            pc.iceConnectionState === 'closed' ||
+            pc.iceConnectionState === 'failed' ||
+            pc.iceConnectionState === 'disconnected';
+
+          if (isConnected) {
+            activeConnections.add(pc);
+            broadcastWebRtcState();
+          } else if (isTerminated) {
+            if (activeConnections.has(pc)) {
+              activeConnections.delete(pc);
+              broadcastWebRtcState();
+            }
+          }
+        };
+
+        pc.addEventListener('connectionstatechange', checkConnection);
+        pc.addEventListener('iceconnectionstatechange', checkConnection);
+
+        const origClose = pc.close.bind(pc);
+        pc.close = function () {
+          activeConnections.delete(pc);
+          broadcastWebRtcState();
+          return origClose();
+        };
+
+        return pc;
+      };
+
+      WrappedRTCPeerConnection.prototype = OrigPeerConnection.prototype;
+      Object.assign(WrappedRTCPeerConnection, OrigPeerConnection);
+      (window as any).RTCPeerConnection = WrappedRTCPeerConnection;
+    } catch (_) {}
+  }
+
   // Helper to wrap getUserMedia stream with canvas compositor
   async function wrapStreamWithCompositor(
     realStream: MediaStream,
     constraints?: MediaStreamConstraints
   ): Promise<MediaStream> {
+    trackMediaStreamTracks(realStream);
+
     if (!constraints || !constraints.video) {
       return realStream;
     }
@@ -450,8 +584,10 @@ interface ActiveCameraMeme {
       return cloned;
     };
 
-    // Notify content script that camera is actively streaming
-    window.postMessage({ source: 'MEMECORD_CAMERA', type: 'CAMERA_CALL_STATE', active: true }, '*');
+    // Track active video track
+    activeVideoTrackIds.add(virtualVideoTrack.id);
+    activeVideoTrackIds.add(realVideoTrack.id);
+    broadcastCallStreamState();
 
     // Handle track stop cleanup (turn off hardware webcam when user mutes camera)
     const origStop = virtualVideoTrack.stop.bind(virtualVideoTrack);
@@ -464,7 +600,9 @@ interface ActiveCameraMeme {
       video.srcObject = null;
       if (video.parentElement) video.remove();
       if (canvas.parentElement) canvas.remove();
-      window.postMessage({ source: 'MEMECORD_CAMERA', type: 'CAMERA_CALL_STATE', active: false }, '*');
+      activeVideoTrackIds.delete(realVideoTrack.id);
+      activeVideoTrackIds.delete(virtualVideoTrack.id);
+      broadcastCallStreamState();
       origStop();
     };
 
@@ -677,7 +815,7 @@ interface ActiveCameraMeme {
     ctx.stroke();
 
     // 5. Title Pill
-    const titleText = `${meme.emoji || '✨'} ${meme.name}`;
+    const titleText = meme.name;
     ctx.font = `bold ${Math.max(12, Math.round(canvasH * 0.026))}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
     const textWidth = ctx.measureText(titleText).width;
     const pillW = textWidth + 24;

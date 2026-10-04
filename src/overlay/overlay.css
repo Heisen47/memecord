@@ -303,6 +303,20 @@ video.memecord-meme-image {
   box-shadow: 0 4px 14px rgba(99, 102, 241, 0.45);
 }
 
+.memecord-deck-action-btn.minimize-btn {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-radius: 50%;
+  color: #94a3b8;
+  font-size: 11px;
+}
+.memecord-deck-action-btn.minimize-btn:hover {
+  background: rgba(99, 102, 241, 0.35);
+  border-color: #818cf8;
+  color: #fff;
+}
+
 .memecord-deck-action-btn.close-btn {
   width: 24px;
   height: 24px;
@@ -451,11 +465,37 @@ video.memecord-meme-image {
   justify-content: center;
   transition: all 0.2s ease;
 }
-.memecord-keybind-display-box:focus-within,
-.memecord-keybind-display-box:hover {
-  border-color: #818cf8;
-  background: rgba(99, 102, 241, 0.15);
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+.memecord-keybind-display-box.clash {
+  border-color: #ef4444 !important;
+  background: rgba(239, 68, 68, 0.15) !important;
+  box-shadow: 0 0 20px rgba(239, 68, 68, 0.45) !important;
+}
+
+.memecord-keybind-status {
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 8px;
+  padding: 5px 10px;
+  border-radius: 8px;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+.memecord-keybind-status.error {
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.22);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  animation: memecord-shake 0.25s ease-in-out;
+}
+.memecord-keybind-status.success {
+  color: #6ee7b7;
+  background: rgba(16, 185, 129, 0.18);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+@keyframes memecord-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-4px); }
+  75% { transform: translateX(4px); }
 }
 
 .memecord-keybind-large-key {
@@ -507,30 +547,41 @@ video.memecord-meme-image {
   box-shadow: 0 0 10px rgba(99, 102, 241, 0.6);
 }
 
+.memecord-quick-key-btn.taken {
+  opacity: 0.4;
+  border-style: dashed;
+  color: #94a3b8;
+}
+.memecord-quick-key-btn.taken:hover {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+  color: #fca5a5;
+  opacity: 0.85;
+}
+
 .memecord-card-thumb-wrap {
-  width: 46px;
-  height: 46px;
+  width: 58px;
+  height: 58px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
   overflow: hidden;
-  background: rgba(0, 0, 0, 0.28);
-  margin-top: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  margin-top: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .memecord-card-img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 10px;
+  border-radius: 9px;
+  display: block;
 }
 
 .memecord-card-emoji-fallback {
-  font-size: 26px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: none !important;
 }
 
 .memecord-card-name {
@@ -660,22 +711,22 @@ video.memecord-meme-image {
   color: #e0e7ff;
 }
 
-/* Minimized Raycast/Dynamic Island Pebble */
+/* Minimized Mode Pebble with Logo */
 .memecord-summon-bubble {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(10, 15, 29, 0.82);
+  background: rgba(13, 17, 30, 0.92);
   backdrop-filter: blur(28px) saturate(210%);
   -webkit-backdrop-filter: blur(28px) saturate(210%);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.65), 0 0 20px rgba(99, 102, 241, 0.25), inset 0 1px 1px rgba(255, 255, 255, 0.3);
+  border: 1.5px solid rgba(129, 140, 248, 0.4);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 25px rgba(99, 102, 241, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
   border-radius: 9999px;
-  padding: 7px 14px;
+  padding: 5px 14px 5px 6px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   cursor: pointer;
   pointer-events: auto !important;
   color: #f8fafc;
@@ -688,10 +739,10 @@ video.memecord-meme-image {
 }
 
 .memecord-summon-bubble:hover {
-  background: rgba(15, 23, 42, 0.94);
-  border-color: rgba(129, 140, 248, 0.65);
-  transform: translateX(-50%) translateY(-4px) scale(1.06);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.75), 0 0 30px rgba(99, 102, 241, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  background: rgba(18, 24, 44, 0.98);
+  border-color: rgba(129, 140, 248, 0.75);
+  transform: translateX(-50%) translateY(-3px) scale(1.05);
+  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(99, 102, 241, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.5);
 }
 
 .memecord-summon-bubble:active {
@@ -703,21 +754,46 @@ video.memecord-meme-image {
   100% { opacity: 1; transform: translateX(-50%) scale(1); }
 }
 
-.memecord-summon-icon {
-  font-size: 15px;
+.memecord-summon-logo-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, rgba(0, 0, 0, 0.6) 100%);
+  border: 1.5px solid rgba(129, 140, 248, 0.55);
+  box-shadow: 0 0 14px rgba(99, 102, 241, 0.45);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.memecord-summon-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.memecord-summon-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .memecord-summon-label {
   font-size: 12px;
+  font-weight: 700;
   letter-spacing: -0.2px;
+  color: #f8fafc;
 }
 
 .memecord-summon-key {
   font-size: 9px;
   font-weight: 800;
-  color: #a5b4fc;
-  background: rgba(99, 102, 241, 0.25);
-  border: 1px solid rgba(129, 140, 248, 0.4);
+  color: #c7d2fe;
+  background: rgba(99, 102, 241, 0.3);
+  border: 1px solid rgba(129, 140, 248, 0.45);
   border-radius: 6px;
   padding: 2px 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

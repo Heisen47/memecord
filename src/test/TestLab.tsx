@@ -97,7 +97,8 @@ export const TestLab: React.FC = () => {
           addLog('HUD closed/minimized via close button. Click floating bubble or press Alt+M.');
         }
       });
-      addLog('Memecord Test Lab initialized. Press 1–9, 0, Q... or click dock buttons.');
+      overlayRef.current.setDockVisible(true);
+      addLog('Memecord Test Lab initialized. Press 1–9, 0, Q... or click dock buttons (works with or without cam).');
     });
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -160,13 +161,42 @@ export const TestLab: React.FC = () => {
 
   return (
     <div className="testlab-container">
-      <header className="testlab-header">
+      <header className="testlab-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div className="testlab-brand">
-          <span className="testlab-logo">🎭</span>
+          <img src="/icons/logo.png" style={{ width: 36, height: 36, borderRadius: '50%', border: '1.5px solid rgba(129, 140, 248, 0.4)' }} alt="Memecord Logo" />
           <div>
             <h1>Memecord Test Lab</h1>
-            <p>Interactive Sandbox & Meme Trigger Simulator</p>
+            <p>Interactive Sandbox &amp; Meme Trigger Simulator (Cam &amp; No-Cam Calls)</p>
           </div>
+        </div>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ fontSize: 11, background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)', borderRadius: 20, padding: '4px 10px', fontWeight: 600 }}>
+            ● Active Call Simulated
+          </span>
+          <button
+            onClick={() => {
+              setSettings((prev) => {
+                const next = !prev.dockVisible;
+                saveSettings({ dockVisible: next });
+                overlayRef.current?.setDockMinimized(!next);
+                overlayRef.current?.setDockVisible(true);
+                addLog(next ? 'HUD expanded via button' : 'HUD minimized via button');
+                return { ...prev, dockVisible: next };
+              });
+            }}
+            style={{
+              background: 'rgba(99, 102, 241, 0.2)',
+              border: '1px solid rgba(99, 102, 241, 0.4)',
+              color: '#a5b4fc',
+              borderRadius: 8,
+              padding: '6px 12px',
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+          >
+            Toggle HUD (Alt+M)
+          </button>
         </div>
       </header>
 
@@ -179,6 +209,7 @@ export const TestLab: React.FC = () => {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, margin: '16px 0' }}>
             {settings.memes.map((meme, idx) => {
               const hotkey = meme.hotkey || (idx < 9 ? String(idx + 1) : '-');
+              const thumb = meme.assetUrl.startsWith('http') || meme.assetUrl.startsWith('data:') ? meme.assetUrl : `/${meme.assetUrl.replace(/^\//, '')}`;
               return (
                 <button
                   key={meme.id}
@@ -197,7 +228,7 @@ export const TestLab: React.FC = () => {
                     transition: 'all 0.15s ease'
                   }}
                 >
-                  <span style={{ fontSize: 24 }}>{meme.emoji}</span>
+                  <img src={thumb} style={{ width: 40, height: 40, borderRadius: 8, objectFit: 'cover', background: '#1e293b' }} alt={meme.name} />
                   <span style={{ fontSize: 12, fontWeight: 600, textAlign: 'center' }}>{meme.name}</span>
                   <span style={{ fontSize: 10, color: '#a5b4fc', background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: 4 }}>
                     Key [{hotkey}]
@@ -279,11 +310,14 @@ export const TestLab: React.FC = () => {
             />
             {!cameraActive && (
               <div style={{ textAlign: 'center', color: '#64748b', padding: 20 }}>
-                <p style={{ margin: 0, fontSize: 13, fontWeight: 500 }}>
-                  Click &ldquo;Start Camera Stream&rdquo; to preview what remote callers see in Google Meet &amp; Discord.
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.25)', borderRadius: 20, padding: '3px 10px', fontSize: 11, fontWeight: 600, marginBottom: 8 }}>
+                  📷 Camera Disabled (No-Cam Mode)
+                </div>
+                <p style={{ margin: 0, fontSize: 13, fontWeight: 500, color: '#e2e8f0' }}>
+                  HUD &amp; Hotkeys work even without camera enabled!
                 </p>
-                <p style={{ margin: '6px 0 0 0', fontSize: 11, color: '#475569' }}>
-                  The virtual compositor will stamp active memes with smooth GIF animation.
+                <p style={{ margin: '6px 0 0 0', fontSize: 11, color: '#94a3b8' }}>
+                  Memes play in your screen overlay with sound. Click &ldquo;Start Camera Stream&rdquo; whenever you want to test stamping onto the remote video feed.
                 </p>
               </div>
             )}
