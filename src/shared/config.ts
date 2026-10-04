@@ -9,9 +9,11 @@ export interface PresetMeme {
 
 export const PRESET_MEMES: PresetMeme[] = [
   { id: 'cinema', name: 'Absolute Cinema', emoji: '🙌', asset: 'memes/absolute-cinema.gif' },
+  { id: 'noice', name: 'Noice (Michael Rosen)', emoji: '👌', asset: 'memes/noice.gif' },
+  { id: 'fist', name: 'Arthur Fist', emoji: '✊', asset: 'memes/fist.gif' },
   { id: 'rock_on', name: 'Rock On / Headbang', emoji: '🤘', asset: 'memes/rock-on.gif' },
   { id: 'pointing', name: 'Roll Safe / Big Brain', emoji: '☝️', asset: 'memes/pointing.gif' },
-  { id: 'perfection', name: 'Chef Kiss / Perfection', emoji: '👌', asset: 'memes/perfection.gif' },
+  { id: 'perfection', name: 'Chef Kiss / Perfection', emoji: '✨', asset: 'memes/perfection.gif' },
   { id: 'thumbs_up', name: 'Thumbs Up', emoji: '👍', asset: 'memes/thumbs-up.gif' },
   { id: 'victory', name: 'Victory / Peace', emoji: '✌️', asset: 'memes/victory.gif' },
   { id: 'stop', name: 'Open Palm Stop', emoji: '🖐', asset: 'memes/stop.gif' }
@@ -29,7 +31,8 @@ export const GESTURE_DEFINITIONS: Array<{
   { key: 'both_hands_up', emoji: '🙌', name: 'Both Hands Up', description: 'Both hands raised open' },
   { key: 'rock_on', emoji: '🤘', name: 'Rock On', description: 'Index & pinky up, middle & ring curled' },
   { key: 'pointing_up', emoji: '☝️', name: 'Pointing Up', description: 'Index pointing up, rest curled' },
-  { key: 'ok_sign', emoji: '👌', name: 'OK Sign', description: 'Thumb & index pinch, 3 fingers up' }
+  { key: 'ok_sign', emoji: '👌', name: 'OK Sign', description: 'Thumb & index pinch, 3 fingers up' },
+  { key: 'fist', emoji: '✊', name: 'Fist', description: 'All fingers curled into fist' }
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -77,10 +80,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
       emoji: '☝️'
     },
     ok_sign: {
-      asset: 'memes/perfection.gif',
+      asset: 'memes/noice.gif',
       duration: 2000,
-      title: 'Perfection',
+      title: 'Noice!',
       emoji: '👌'
+    },
+    fist: {
+      asset: 'memes/fist.gif',
+      duration: 2000,
+      title: 'Arthur Fist',
+      emoji: '✊'
     }
   }
 };
@@ -92,5 +101,6 @@ export const KEYBOARD_GESTURE_MAP: Record<string, Exclude<GestureType, 'none'>> 
   '4': 'both_hands_up',
   '5': 'rock_on',
   '6': 'pointing_up',
-  '7': 'ok_sign'
+  '7': 'ok_sign',
+  '8': 'fist'
 };

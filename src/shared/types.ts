@@ -6,6 +6,7 @@ export type GestureType =
   | 'rock_on'
   | 'pointing_up'
   | 'ok_sign'
+  | 'fist'
   | 'none';
 
 export type GestureState = 'IDLE' | 'DETECTING' | 'CONFIRMED' | 'TRIGGERED' | 'COOLDOWN';

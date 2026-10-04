@@ -56,7 +56,9 @@ export class MemeOverlayManager {
 
     // Resolve URL for asset
     let assetUrl = config.asset;
-    if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.runtime?.getURL) {
+    if (config.asset.startsWith('http://') || config.asset.startsWith('https://') || config.asset.startsWith('data:')) {
+      assetUrl = config.asset;
+    } else if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.runtime?.getURL) {
       try {
         assetUrl = chrome.runtime.getURL(config.asset.replace(/^\//, ''));
       } catch (err) {
@@ -64,9 +66,7 @@ export class MemeOverlayManager {
         assetUrl = config.asset.startsWith('/') ? config.asset : `/${config.asset}`;
       }
     } else {
-      assetUrl = config.asset.startsWith('/') || config.asset.startsWith('http') || config.asset.startsWith('data:')
-        ? config.asset
-        : `/${config.asset}`;
+      assetUrl = config.asset.startsWith('/') ? config.asset : `/${config.asset}`;
     }
 
     const box = document.createElement('div');

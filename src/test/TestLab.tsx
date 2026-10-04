@@ -297,6 +297,10 @@ export const TestLab: React.FC = () => {
                 <span>👌 OK Sign</span>
                 <span className="key-badge">7</span>
               </button>
+              <button className="hotkey-btn" onClick={() => triggerManual('fist')}>
+                <span>✊ Fist</span>
+                <span className="key-badge">8</span>
+              </button>
             </div>
           </div>
 

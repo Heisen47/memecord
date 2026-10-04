@@ -163,6 +163,18 @@ export function classifyHandPose(landmarks: Landmark[], handedness?: 'Left' | 'R
     };
   }
 
+  // 7. FIST CHECK (✊)
+  // All 4 fingers curled, thumb not pointing up
+  const allFourCurled = indexCurl && middleCurl && ringCurl && pinkyCurl;
+  if (allFourCurled && !thumbPointingUp) {
+    return {
+      gesture: 'fist',
+      confidence: 0.93,
+      landmarks,
+      handedness
+    };
+  }
+
   return {
     gesture: 'none',
     confidence: 0,

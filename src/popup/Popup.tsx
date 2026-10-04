@@ -10,8 +10,10 @@ import {
   ChevronDown,
   ChevronUp,
   Link as LinkIcon,
-  Play
+  Play,
+  Globe
 } from 'lucide-react';
+import { MemeApiModal } from './MemeApiModal';
 
 export const Popup: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
@@ -21,6 +23,10 @@ export const Popup: React.FC = () => {
   });
   const [testedGesture, setTestedGesture] = useState<string | null>(null);
   const [expandedGesture, setExpandedGesture] = useState<string | null>(null);
+  const [apiModalGesture, setApiModalGesture] = useState<{
+    key: Exclude<GestureType, 'none'>;
+    name: string;
+  } | null>(null);
 
   useEffect(() => {
     // Load initial settings
@@ -105,6 +111,27 @@ export const Popup: React.FC = () => {
       }
     });
     setSettings(updated);
+  };
+
+  const handleSelectFromApi = async (url: string, title: string) => {
+    if (!apiModalGesture) return;
+    const key = apiModalGesture.key;
+    const currentConfig = settings.memes[key] || DEFAULT_SETTINGS.memes[key];
+    const updatedMeme: MemeItemConfig = {
+      ...currentConfig,
+      asset: url,
+      title: title,
+      emoji: '✨'
+    };
+
+    const updated = await saveSettings({
+      memes: {
+        ...settings.memes,
+        [key]: updatedMeme
+      }
+    });
+    setSettings(updated);
+    setApiModalGesture(null);
   };
 
   const handleTriggerTest = async (gesture: Exclude<GestureType, 'none'>) => {
@@ -298,6 +325,15 @@ export const Popup: React.FC = () => {
                         </span>
                       </div>
                     </div>
+
+                    <button
+                      type="button"
+                      className="api-browse-btn"
+                      onClick={() => setApiModalGesture({ key: def.key, name: def.name })}
+                    >
+                      <Globe size={13} />
+                      Browse Online Memes (API)
+                    </button>
                   </div>
                 )}
               </div>
@@ -366,6 +402,16 @@ export const Popup: React.FC = () => {
         Open Gesture Test Lab / Sandbox
         <ExternalLink size={12} />
       </button>
+
+      {/* Online Meme API Modal */}
+      {apiModalGesture && (
+        <MemeApiModal
+          gestureKey={apiModalGesture.key}
+          gestureName={apiModalGesture.name}
+          onSelect={handleSelectFromApi}
+          onClose={() => setApiModalGesture(null)}
+        />
+      )}
     </div>
   );
 };
