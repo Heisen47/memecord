@@ -1,5 +1,5 @@
 import { FilesetResolver, HandLandmarker } from '@mediapipe/tasks-vision';
-import { classifyHandPose } from './classifier';
+import { classifyHandPose, classifyHands } from './classifier';
 import { GestureStateMachine } from './state-machine';
 import { GestureDetectionResult, GestureType, CameraStatusInfo, AppSettings } from '../shared/types';
 
@@ -155,7 +155,7 @@ export class GestureDetector {
           delegate: 'GPU'
         },
         runningMode: 'VIDEO',
-        numHands: 1,
+        numHands: 2,
         minHandDetectionConfidence: 0.5,
         minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5
@@ -168,7 +168,7 @@ export class GestureDetector {
           delegate: 'CPU'
         },
         runningMode: 'VIDEO',
-        numHands: 1,
+        numHands: 2,
         minHandDetectionConfidence: 0.5,
         minHandPresenceConfidence: 0.5,
         minTrackingConfidence: 0.5
@@ -237,13 +237,10 @@ export class GestureDetector {
       let detection: GestureDetectionResult = { gesture: 'none', confidence: 0 };
 
       if (results.landmarks && results.landmarks.length > 0) {
-        const handLandmarks = results.landmarks[0];
-        const handedness =
-          results.handedness && results.handedness.length > 0
-            ? (results.handedness[0][0]?.categoryName as 'Left' | 'Right')
-            : undefined;
-
-        detection = classifyHandPose(handLandmarks, handedness);
+        const handednessList = results.handedness?.map(
+          (h) => h[0]?.categoryName as 'Left' | 'Right'
+        );
+        detection = classifyHands(results.landmarks, handednessList);
       }
 
       // Update state machine

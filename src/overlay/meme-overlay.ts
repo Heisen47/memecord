@@ -56,8 +56,17 @@ export class MemeOverlayManager {
 
     // Resolve URL for asset
     let assetUrl = config.asset;
-    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-      assetUrl = chrome.runtime.getURL(config.asset);
+    if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.runtime?.getURL) {
+      try {
+        assetUrl = chrome.runtime.getURL(config.asset.replace(/^\//, ''));
+      } catch (err) {
+        console.warn('[MemeMeet] chrome.runtime.getURL failed, fallback to root path:', err);
+        assetUrl = config.asset.startsWith('/') ? config.asset : `/${config.asset}`;
+      }
+    } else {
+      assetUrl = config.asset.startsWith('/') || config.asset.startsWith('http') || config.asset.startsWith('data:')
+        ? config.asset
+        : `/${config.asset}`;
     }
 
     const box = document.createElement('div');
@@ -67,6 +76,9 @@ export class MemeOverlayManager {
     img.className = 'mememeet-meme-image';
     img.src = assetUrl;
     img.alt = config.title || gesture;
+    img.onerror = () => {
+      console.error(`[MemeMeet] Failed to load meme asset: ${assetUrl}`);
+    };
 
     const title = document.createElement('div');
     title.className = 'mememeet-meme-title';

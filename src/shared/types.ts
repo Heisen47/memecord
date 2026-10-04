@@ -1,4 +1,4 @@
-export type GestureType = 'thumbs_up' | 'victory' | 'open_palm' | 'none';
+export type GestureType = 'thumbs_up' | 'victory' | 'open_palm' | 'both_hands_up' | 'none';
 
 export type GestureState = 'IDLE' | 'DETECTING' | 'CONFIRMED' | 'TRIGGERED' | 'COOLDOWN';
 

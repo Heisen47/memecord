@@ -125,3 +125,68 @@ export function classifyHandPose(landmarks: Landmark[], handedness?: 'Left' | 'R
     handedness
   };
 }
+
+export function isHandRaised(landmarks: Landmark[]): boolean {
+  if (!landmarks || landmarks.length < 21) return false;
+  const wrist = landmarks[0];
+  const indexTip = landmarks[8];
+  const indexPip = landmarks[6];
+  const middleTip = landmarks[12];
+  const middlePip = landmarks[10];
+  const ringTip = landmarks[16];
+  const ringPip = landmarks[14];
+
+  // In normalized coordinates, y=0 is top, y=1 is bottom
+  // Fingertips must be significantly above wrist
+  const tipsAboveWrist =
+    indexTip.y < wrist.y - 0.08 &&
+    middleTip.y < wrist.y - 0.08 &&
+    ringTip.y < wrist.y - 0.08;
+
+  // Fingers pointing upward (tips above PIP joints)
+  const fingersPointingUp =
+    indexTip.y < indexPip.y &&
+    middleTip.y < middlePip.y &&
+    ringTip.y < ringPip.y;
+
+  return tipsAboveWrist && fingersPointingUp;
+}
+
+export function classifyHands(
+  allHands: Landmark[][],
+  handednessList?: ('Left' | 'Right')[]
+): GestureDetectionResult {
+  if (!allHands || allHands.length === 0) {
+    return { gesture: 'none', confidence: 0 };
+  }
+
+  // 1. Both Hands Up (🙌 Absolute Cinema)
+  if (allHands.length >= 2) {
+    const hand1 = allHands[0];
+    const hand2 = allHands[1];
+
+    if (isHandRaised(hand1) && isHandRaised(hand2)) {
+      const xDist = Math.abs(hand1[0].x - hand2[0].x);
+      if (xDist > 0.1) {
+        return {
+          gesture: 'both_hands_up',
+          confidence: 0.95,
+          landmarks: hand1
+        };
+      }
+    }
+  }
+
+  // 2. Single hand gesture fallback
+  const firstResult = classifyHandPose(allHands[0], handednessList?.[0]);
+  if (firstResult.gesture !== 'none') {
+    return firstResult;
+  }
+
+  if (allHands.length > 1) {
+    return classifyHandPose(allHands[1], handednessList?.[1]);
+  }
+
+  return firstResult;
+}
+

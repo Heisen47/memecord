@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, HandLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
-import { classifyHandPose } from '../gesture/classifier';
+import { classifyHandPose, classifyHands } from '../gesture/classifier';
 import { GestureStateMachine } from '../gesture/state-machine';
 import { MemeOverlayManager } from '../overlay/meme-overlay';
 import { DEFAULT_SETTINGS, KEYBOARD_GESTURE_MAP } from '../shared/config';
@@ -14,6 +14,8 @@ export const TestLab: React.FC = () => {
   const overlayRef = useRef<MemeOverlayManager | null>(null);
   const stateMachineRef = useRef<GestureStateMachine | null>(null);
   const animIdRef = useRef<number | null>(null);
+
+  const streamRef = useRef<MediaStream | null>(null);
 
   const [isRunning, setIsRunning] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
@@ -39,6 +41,8 @@ export const TestLab: React.FC = () => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+
     // 1. Initialize Overlay Manager
     overlayRef.current = new MemeOverlayManager(DEFAULT_SETTINGS.memes, true);
 
@@ -69,11 +73,20 @@ export const TestLab: React.FC = () => {
     window.addEventListener('keydown', handleKeydown);
 
     // 4. Start Camera & MediaPipe
-    startMediaPipe();
+    startMediaPipe(() => isMounted);
 
     return () => {
+      isMounted = false;
       window.removeEventListener('keydown', handleKeydown);
       if (animIdRef.current) cancelAnimationFrame(animIdRef.current);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+      }
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.srcObject = null;
+      }
       overlayRef.current?.destroy();
     };
   }, []);
@@ -82,7 +95,7 @@ export const TestLab: React.FC = () => {
     stateMachineRef.current?.updateConfig(stabilityMs, cooldownMs);
   }, [stabilityMs, cooldownMs]);
 
-  const startMediaPipe = async () => {
+  const startMediaPipe = async (getIsMounted?: () => boolean) => {
     try {
       setLoading(true);
       setError(null);
@@ -99,32 +112,48 @@ export const TestLab: React.FC = () => {
 
       const vision = await FilesetResolver.forVisionTasks(wasmPath);
 
+      if (getIsMounted && !getIsMounted()) return;
+
       let landmarker: HandLandmarker;
       try {
         landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: modelPath, delegate: 'GPU' },
           runningMode: 'VIDEO',
-          numHands: 1
+          numHands: 2
         });
       } catch (e) {
         console.warn('Fallback to CPU delegate', e);
         landmarker = await HandLandmarker.createFromOptions(vision, {
           baseOptions: { modelAssetPath: modelPath, delegate: 'CPU' },
           runningMode: 'VIDEO',
-          numHands: 1
+          numHands: 2
         });
       }
+
+      if (getIsMounted && !getIsMounted()) return;
 
       // Camera
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, frameRate: { ideal: 20 } }
       });
 
+      if (getIsMounted && !getIsMounted()) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+
+      streamRef.current = stream;
+
       if (!videoRef.current || !canvasRef.current) return;
 
       const video = videoRef.current;
       video.srcObject = stream;
-      await video.play();
+      try {
+        await video.play();
+      } catch (playErr: any) {
+        if (playErr.name === 'AbortError') return;
+        throw playErr;
+      }
 
       setIsRunning(true);
       setLoading(false);
@@ -156,10 +185,10 @@ export const TestLab: React.FC = () => {
                 lineWidth: 2,
                 radius: 4
               });
-
-              const detection = classifyHandPose(landmarks);
-              stateMachineRef.current?.update(detection);
             }
+
+            const detection = classifyHands(results.landmarks);
+            stateMachineRef.current?.update(detection);
           } else {
             stateMachineRef.current?.update({ gesture: 'none', confidence: 0 });
           }
@@ -251,6 +280,10 @@ export const TestLab: React.FC = () => {
               <button className="hotkey-btn" onClick={() => triggerManual('open_palm')}>
                 <span>🖐 Open Palm Stop</span>
                 <span className="key-badge">3</span>
+              </button>
+              <button className="hotkey-btn" onClick={() => triggerManual('both_hands_up')}>
+                <span>🙌 Both Hands Up</span>
+                <span className="key-badge">4</span>
               </button>
             </div>
           </div>

@@ -25,12 +25,21 @@ export const DEFAULT_SETTINGS: AppSettings = {
       duration: 2000,
       title: 'Open Palm Stop',
       emoji: '🖐'
+    },
+    both_hands_up: {
+      asset: 'memes/absolute-cinema.gif',
+      duration: 2000,
+      title: 'Both Hands Up',
+      emoji: '🙌'
     }
   }
 };
 
-export const KEYBOARD_GESTURE_MAP: Record<string, 'thumbs_up' | 'victory' | 'open_palm'> = {
+import { GestureType } from './types';
+
+export const KEYBOARD_GESTURE_MAP: Record<string, Exclude<GestureType, 'none'>> = {
   '1': 'thumbs_up',
   '2': 'victory',
-  '3': 'open_palm'
+  '3': 'open_palm',
+  '4': 'both_hands_up'
 };
