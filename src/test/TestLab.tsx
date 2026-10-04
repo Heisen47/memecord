@@ -85,6 +85,9 @@ export const TestLab: React.FC = () => {
           const updated = await removeMeme(memeId);
           setSettings(updated);
           addLog(`Deleted meme: ${memeId}`);
+        },
+        onCloseDock: () => {
+          addLog('HUD closed/minimized via close button. Click floating bubble or press Alt+M.');
         }
       });
       addLog('Memecord Test Lab initialized. Press 1–9, 0, Q... or click dock buttons.');
@@ -93,6 +96,19 @@ export const TestLab: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+
+      if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        setSettings((prev) => {
+          const next = !prev.dockVisible;
+          saveSettings({ dockVisible: next });
+          overlayRef.current?.setDockMinimized(!next);
+          overlayRef.current?.setDockVisible(true);
+          addLog(next ? 'HUD expanded via Alt+M' : 'HUD minimized via Alt+M');
+          return { ...prev, dockVisible: next };
+        });
+        return;
+      }
 
       const key = e.key;
       getSettings().then((curr) => {

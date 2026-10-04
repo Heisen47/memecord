@@ -7,6 +7,7 @@ export interface MemeOverlayCallbacks {
   onTriggerMeme?: (meme: MemeItem) => void;
   onAddMeme?: (meme: MemeItem) => void;
   onDeleteMeme?: (memeId: string) => void;
+  onCloseDock?: () => void;
 }
 
 export class MemeOverlayManager {
@@ -40,6 +41,10 @@ export class MemeOverlayManager {
           const meme = this.settings.memes.find((m) => m.id === memeId);
           this.callbacks.onDeleteMeme?.(memeId);
           this.showToast(`🗑️ Removed "${meme?.name || 'Meme'}" from dock`);
+        },
+        onCloseDock: () => {
+          this.callbacks.onCloseDock?.();
+          this.showToast('🎭 HUD Minimized • Press Alt+M or click bubble to reopen');
         }
       });
 
@@ -55,6 +60,10 @@ export class MemeOverlayManager {
 
   public setDockVisible(visible: boolean) {
     this.floatingDock?.setVisible(visible);
+  }
+
+  public setDockMinimized(minimized: boolean) {
+    this.floatingDock?.setMinimized(minimized);
   }
 
   public showToast(message: string, durationMs: number = 2500) {

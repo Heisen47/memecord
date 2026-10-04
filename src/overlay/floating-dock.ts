@@ -6,14 +6,60 @@ export interface FloatingDockCallbacks {
   onAddMeme: () => void;
   onDeleteMeme: (memeId: string) => void;
   onToggleDock?: () => void;
+  onCloseDock?: () => void;
+}
+
+function playHapticSound(type: 'pop' | 'minimize' | 'expand' | 'delete' = 'pop') {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.type = 'sine';
+    const t = ctx.currentTime;
+
+    if (type === 'pop') {
+      osc.frequency.setValueAtTime(440, t);
+      osc.frequency.exponentialRampToValueAtTime(880, t + 0.08);
+      gain.gain.setValueAtTime(0.09, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+      osc.start(t);
+      osc.stop(t + 0.09);
+    } else if (type === 'minimize') {
+      osc.frequency.setValueAtTime(600, t);
+      osc.frequency.exponentialRampToValueAtTime(320, t + 0.1);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      osc.start(t);
+      osc.stop(t + 0.11);
+    } else if (type === 'expand') {
+      osc.frequency.setValueAtTime(360, t);
+      osc.frequency.exponentialRampToValueAtTime(720, t + 0.1);
+      gain.gain.setValueAtTime(0.08, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+      osc.start(t);
+      osc.stop(t + 0.11);
+    } else if (type === 'delete') {
+      osc.frequency.setValueAtTime(300, t);
+      osc.frequency.exponentialRampToValueAtTime(150, t + 0.12);
+      gain.gain.setValueAtTime(0.1, t);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+      osc.start(t);
+      osc.stop(t + 0.13);
+    }
+  } catch (_) {}
 }
 
 export class FloatingDock {
   private element: HTMLElement | null = null;
+  private summonBubble: HTMLElement | null = null;
   private btnContainer: HTMLElement | null = null;
   private contextMenu: HTMLElement | null = null;
-  private isCollapsed: boolean = false;
+  private isMinimized: boolean = false;
   private isEditMode: boolean = false;
+  private isVisible: boolean = true;
   private memes: MemeItem[] = [];
   private callbacks: FloatingDockCallbacks;
 
@@ -23,6 +69,7 @@ export class FloatingDock {
   private dragStartY = 0;
   private initialLeft = 0;
   private initialTop = 0;
+  private activeDragTarget: HTMLElement | null = null;
 
   constructor(parent: HTMLElement, memes: MemeItem[], callbacks: FloatingDockCallbacks) {
     this.memes = memes;
@@ -33,6 +80,7 @@ export class FloatingDock {
   }
 
   private createDom(parent: HTMLElement) {
+    // 1. Full Floating HUD Dock
     const dock = document.createElement('div');
     dock.className = 'memecord-dock';
 
@@ -43,10 +91,10 @@ export class FloatingDock {
     dragHandle.textContent = '⋮⋮';
     dock.appendChild(dragHandle);
 
-    // Brand / Minimize Toggle
+    // Brand Badge / Collapse Toggle
     const badge = document.createElement('div');
     badge.className = 'memecord-dock-badge';
-    badge.title = 'Click to collapse/expand toolbar';
+    badge.title = 'Click to minimize HUD (Alt+M)';
 
     const dot = document.createElement('span');
     dot.className = 'memecord-status-dot';
@@ -59,7 +107,7 @@ export class FloatingDock {
     badge.appendChild(label);
     badge.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.toggleCollapse();
+      this.setMinimized(true);
     });
     dock.appendChild(badge);
 
@@ -73,6 +121,24 @@ export class FloatingDock {
 
     parent.appendChild(dock);
     this.element = dock;
+
+    // 2. Minimized Summon Pebble (Dynamic Island style micro-pill)
+    const bubble = document.createElement('div');
+    bubble.className = 'memecord-summon-bubble';
+    bubble.title = 'Open Memecord HUD (Alt+M)';
+    bubble.innerHTML = `
+      <span class="memecord-status-dot"></span>
+      <span class="memecord-summon-icon">🎭</span>
+      <span class="memecord-summon-label">Memecord</span>
+      <span class="memecord-summon-key">Alt+M</span>
+    `;
+    bubble.style.display = 'none';
+    bubble.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setMinimized(false);
+    });
+    parent.appendChild(bubble);
+    this.summonBubble = bubble;
 
     // Restore saved position
     this.restorePosition();
@@ -121,6 +187,7 @@ export class FloatingDock {
         delBadge.title = `Delete ${meme.name}`;
         delBadge.addEventListener('click', (e) => {
           e.stopPropagation();
+          playHapticSound('delete');
           this.callbacks.onDeleteMeme(meme.id);
         });
         btn.appendChild(delBadge);
@@ -130,9 +197,11 @@ export class FloatingDock {
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         if (this.isEditMode) {
-          // In edit mode, clicking deletes the meme
+          playHapticSound('delete');
           this.callbacks.onDeleteMeme(meme.id);
         } else {
+          playHapticSound('pop');
+          this.createClickRipple(btn);
           this.callbacks.onTriggerMeme(meme);
         }
       });
@@ -147,6 +216,11 @@ export class FloatingDock {
       this.btnContainer!.appendChild(btn);
     });
 
+    // Divider
+    const divider = document.createElement('div');
+    divider.className = 'memecord-dock-divider';
+    this.btnContainer.appendChild(divider);
+
     // Edit / Manage Mode Toggle Button (✏️ / ✓)
     const editBtn = document.createElement('button');
     editBtn.className = `memecord-dock-btn action-btn edit-toggle ${this.isEditMode ? 'active' : ''}`;
@@ -154,6 +228,7 @@ export class FloatingDock {
     editBtn.textContent = this.isEditMode ? '✓' : '✏️';
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      playHapticSound('pop');
       this.toggleEditMode();
     });
     this.btnContainer.appendChild(editBtn);
@@ -165,10 +240,79 @@ export class FloatingDock {
     addBtn.textContent = '+';
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
+      playHapticSound('pop');
       if (this.isEditMode) this.toggleEditMode();
       this.callbacks.onAddMeme();
     });
     this.btnContainer.appendChild(addBtn);
+
+    // Dedicated Close (✕) Button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'memecord-dock-btn action-btn close-btn';
+    closeBtn.title = 'Close HUD (Press Alt+M to reopen)';
+    closeBtn.innerHTML = '✕';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.setMinimized(true);
+    });
+    this.btnContainer.appendChild(closeBtn);
+  }
+
+  private createClickRipple(target: HTMLElement) {
+    const ripple = document.createElement('div');
+    ripple.className = 'memecord-click-ripple';
+    target.appendChild(ripple);
+    setTimeout(() => ripple.remove(), 400);
+  }
+
+  public setMinimized(minimized: boolean) {
+    this.isMinimized = minimized;
+    playHapticSound(minimized ? 'minimize' : 'expand');
+
+    if (minimized) {
+      if (this.element) {
+        this.element.classList.add('hiding');
+        setTimeout(() => {
+          if (this.isMinimized && this.element) {
+            this.element.style.display = 'none';
+            this.element.classList.remove('hiding');
+          }
+        }, 220);
+      }
+      if (this.summonBubble && this.isVisible) {
+        this.summonBubble.style.display = 'flex';
+        this.summonBubble.classList.add('visible');
+        this.syncBubblePosition();
+      }
+      this.callbacks.onCloseDock?.();
+    } else {
+      if (this.summonBubble) {
+        this.summonBubble.style.display = 'none';
+        this.summonBubble.classList.remove('visible');
+      }
+      if (this.element && this.isVisible) {
+        this.element.style.display = 'flex';
+        this.element.classList.add('entering');
+        setTimeout(() => {
+          this.element?.classList.remove('entering');
+        }, 250);
+      }
+    }
+  }
+
+  public toggleMinimize() {
+    this.setMinimized(!this.isMinimized);
+  }
+
+  private syncBubblePosition() {
+    if (!this.summonBubble || !this.element) return;
+    const rect = this.element.getBoundingClientRect();
+    if (rect.left > 0 && rect.top > 0) {
+      this.summonBubble.style.left = `${Math.min(window.innerWidth - 120, rect.left)}px`;
+      this.summonBubble.style.top = `${Math.min(window.innerHeight - 50, rect.top)}px`;
+      this.summonBubble.style.bottom = 'auto';
+      this.summonBubble.style.transform = 'none';
+    }
   }
 
   private toggleEditMode() {
@@ -181,19 +325,6 @@ export class FloatingDock {
       }
     }
     this.renderButtons();
-  }
-
-  private toggleCollapse() {
-    this.isCollapsed = !this.isCollapsed;
-    const titleEl = this.element?.querySelector('#memecord-dock-title');
-
-    if (this.btnContainer) {
-      this.btnContainer.style.display = this.isCollapsed ? 'none' : 'flex';
-    }
-
-    if (titleEl) {
-      titleEl.textContent = this.isCollapsed ? `🎭 ${this.memes.length}` : '🎭 Memecord';
-    }
   }
 
   private openContextMenu(x: number, y: number, meme: MemeItem) {
@@ -215,6 +346,7 @@ export class FloatingDock {
     triggerItem.addEventListener('click', (e) => {
       e.stopPropagation();
       this.closeContextMenu();
+      playHapticSound('pop');
       this.callbacks.onTriggerMeme(meme);
     });
     menu.appendChild(triggerItem);
@@ -226,9 +358,21 @@ export class FloatingDock {
     deleteItem.addEventListener('click', (e) => {
       e.stopPropagation();
       this.closeContextMenu();
+      playHapticSound('delete');
       this.callbacks.onDeleteMeme(meme.id);
     });
     menu.appendChild(deleteItem);
+
+    // 3. Close HUD
+    const closeItem = document.createElement('button');
+    closeItem.className = 'memecord-menu-item';
+    closeItem.innerHTML = `<span>✕</span><span>Hide HUD (Alt+M)</span>`;
+    closeItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.closeContextMenu();
+      this.setMinimized(true);
+    });
+    menu.appendChild(closeItem);
 
     document.body.appendChild(menu);
     this.contextMenu = menu;
@@ -248,82 +392,113 @@ export class FloatingDock {
   }
 
   private setupDraggable() {
-    if (!this.element) return;
+    const bindDrag = (targetEl: HTMLElement) => {
+      const onMouseDown = (e: MouseEvent) => {
+        if ((e.target as HTMLElement).tagName === 'BUTTON' || (e.target as HTMLElement).tagName === 'INPUT') {
+          return;
+        }
+        this.isDragging = true;
+        this.activeDragTarget = targetEl;
+        this.dragStartX = e.clientX;
+        this.dragStartY = e.clientY;
 
-    const onMouseDown = (e: MouseEvent) => {
-      if ((e.target as HTMLElement).tagName === 'BUTTON' || (e.target as HTMLElement).tagName === 'INPUT') {
-        return;
-      }
-      this.isDragging = true;
-      this.dragStartX = e.clientX;
-      this.dragStartY = e.clientY;
+        const rect = targetEl.getBoundingClientRect();
+        this.initialLeft = rect.left;
+        this.initialTop = rect.top;
 
-      const rect = this.element!.getBoundingClientRect();
-      this.initialLeft = rect.left;
-      this.initialTop = rect.top;
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+        e.preventDefault();
+      };
 
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-      e.preventDefault();
+      const onMouseMove = (e: MouseEvent) => {
+        if (!this.isDragging || !this.activeDragTarget) return;
+        const deltaX = e.clientX - this.dragStartX;
+        const deltaY = e.clientY - this.dragStartY;
+
+        let newLeft = this.initialLeft + deltaX;
+        let newTop = this.initialTop + deltaY;
+
+        const maxLeft = window.innerWidth - this.activeDragTarget.offsetWidth - 10;
+        const maxTop = window.innerHeight - this.activeDragTarget.offsetHeight - 10;
+
+        newLeft = Math.max(10, Math.min(maxLeft, newLeft));
+        newTop = Math.max(10, Math.min(maxTop, newTop));
+
+        this.activeDragTarget.style.left = `${newLeft}px`;
+        this.activeDragTarget.style.top = `${newTop}px`;
+        this.activeDragTarget.style.bottom = 'auto';
+        this.activeDragTarget.style.transform = 'none';
+
+        if (this.activeDragTarget === this.element && this.summonBubble) {
+          this.summonBubble.style.left = `${newLeft}px`;
+          this.summonBubble.style.top = `${newTop}px`;
+          this.summonBubble.style.bottom = 'auto';
+          this.summonBubble.style.transform = 'none';
+        }
+      };
+
+      const onMouseUp = () => {
+        if (!this.isDragging) return;
+        this.isDragging = false;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+
+        if (this.activeDragTarget) {
+          const rect = this.activeDragTarget.getBoundingClientRect();
+          try {
+            localStorage.setItem('memecord_dock_pos', JSON.stringify({ left: rect.left, top: rect.top }));
+          } catch (_) {}
+        }
+        this.activeDragTarget = null;
+      };
+
+      targetEl.addEventListener('mousedown', onMouseDown);
     };
 
-    const onMouseMove = (e: MouseEvent) => {
-      if (!this.isDragging || !this.element) return;
-      const deltaX = e.clientX - this.dragStartX;
-      const deltaY = e.clientY - this.dragStartY;
-
-      let newLeft = this.initialLeft + deltaX;
-      let newTop = this.initialTop + deltaY;
-
-      const maxLeft = window.innerWidth - this.element.offsetWidth - 10;
-      const maxTop = window.innerHeight - this.element.offsetHeight - 10;
-
-      newLeft = Math.max(10, Math.min(maxLeft, newLeft));
-      newTop = Math.max(10, Math.min(maxTop, newTop));
-
-      this.element.style.left = `${newLeft}px`;
-      this.element.style.top = `${newTop}px`;
-      this.element.style.bottom = 'auto';
-      this.element.style.transform = 'none';
-    };
-
-    const onMouseUp = () => {
-      if (!this.isDragging) return;
-      this.isDragging = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-
-      if (this.element) {
-        const rect = this.element.getBoundingClientRect();
-        try {
-          localStorage.setItem('memecord_dock_pos', JSON.stringify({ left: rect.left, top: rect.top }));
-        } catch (_) {}
-      }
-    };
-
-    this.element.addEventListener('mousedown', onMouseDown);
+    if (this.element) bindDrag(this.element);
+    if (this.summonBubble) bindDrag(this.summonBubble);
   }
 
   private restorePosition() {
     try {
       const saved = localStorage.getItem('memecord_dock_pos');
-      if (saved && this.element) {
+      if (saved) {
         const { left, top } = JSON.parse(saved);
         if (typeof left === 'number' && typeof top === 'number') {
           const maxLeft = window.innerWidth - 120;
           const maxTop = window.innerHeight - 50;
-          this.element.style.left = `${Math.max(10, Math.min(maxLeft, left))}px`;
-          this.element.style.top = `${Math.max(10, Math.min(maxTop, top))}px`;
-          this.element.style.bottom = 'auto';
-          this.element.style.transform = 'none';
+          const safeLeft = Math.max(10, Math.min(maxLeft, left));
+          const safeTop = Math.max(10, Math.min(maxTop, top));
+
+          if (this.element) {
+            this.element.style.left = `${safeLeft}px`;
+            this.element.style.top = `${safeTop}px`;
+            this.element.style.bottom = 'auto';
+            this.element.style.transform = 'none';
+          }
+          if (this.summonBubble) {
+            this.summonBubble.style.left = `${safeLeft}px`;
+            this.summonBubble.style.top = `${safeTop}px`;
+            this.summonBubble.style.bottom = 'auto';
+            this.summonBubble.style.transform = 'none';
+          }
         }
       }
     } catch (_) {}
   }
 
   public setVisible(visible: boolean) {
-    if (this.element) {
-      this.element.style.display = visible ? 'flex' : 'none';
+    this.isVisible = visible;
+    if (!visible) {
+      if (this.element) this.element.style.display = 'none';
+      if (this.summonBubble) this.summonBubble.style.display = 'none';
+    } else {
+      if (this.isMinimized) {
+        if (this.summonBubble) this.summonBubble.style.display = 'flex';
+      } else {
+        if (this.element) this.element.style.display = 'flex';
+      }
     }
   }
 
@@ -332,6 +507,10 @@ export class FloatingDock {
     if (this.element && this.element.parentElement) {
       this.element.parentElement.removeChild(this.element);
       this.element = null;
+    }
+    if (this.summonBubble && this.summonBubble.parentElement) {
+      this.summonBubble.parentElement.removeChild(this.summonBubble);
+      this.summonBubble = null;
     }
   }
 }

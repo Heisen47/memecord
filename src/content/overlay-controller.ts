@@ -34,6 +34,12 @@ export class OverlayController {
         const updated = await removeMeme(memeId);
         this.settings = updated;
         this.overlay?.updateSettings(updated);
+      },
+      onCloseDock: () => {
+        if (this.settings) {
+          saveSettings({ dockVisible: false });
+          this.settings.dockVisible = false;
+        }
       }
     });
 
@@ -268,8 +274,10 @@ export class OverlayController {
         e.preventDefault();
         const next = !this.settings.dockVisible;
         saveSettings({ dockVisible: next });
-        this.overlay?.setDockVisible(next);
-        this.overlay?.showToast(next ? 'Dock visible' : 'Dock hidden');
+        this.settings.dockVisible = next;
+        this.overlay?.setDockMinimized(!next);
+        this.overlay?.setDockVisible(true);
+        this.overlay?.showToast(next ? '🎭 Memecord HUD Expanded' : '🎭 Memecord HUD Minimized (Alt+M)');
         return;
       }
 
