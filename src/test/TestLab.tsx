@@ -4,6 +4,7 @@ import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storag
 import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/config';
 import { assignDefaultHotkey, fetchAsDataUrl } from '../shared/media-resolver';
+import { isToggleShortcutPressed, getToggleShortcutText, getToggleShortcutFullLabel } from '../shared/platform';
 import '../overlay/overlay.css';
 import './test.css';
 
@@ -94,7 +95,7 @@ export const TestLab: React.FC = () => {
           addLog(`Rebound meme ${memeId} to [${newHotkey}]`);
         },
         onCloseDock: () => {
-          addLog('HUD closed/minimized via close button. Click floating bubble or press Alt+M.');
+          addLog(`HUD minimized. Click floating bubble or press ${getToggleShortcutText()}.`);
         }
       });
       overlayRef.current.setDockVisible(true);
@@ -105,14 +106,14 @@ export const TestLab: React.FC = () => {
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
 
-      if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+      if (isToggleShortcutPressed(e)) {
         e.preventDefault();
         setSettings((prev) => {
           const next = !prev.dockVisible;
           saveSettings({ dockVisible: next });
           overlayRef.current?.setDockMinimized(!next);
           overlayRef.current?.setDockVisible(true);
-          addLog(next ? 'HUD expanded via Alt+M' : 'HUD minimized via Alt+M');
+          addLog(next ? `HUD expanded via ${getToggleShortcutText()}` : `HUD minimized via ${getToggleShortcutText()}`);
           return { ...prev, dockVisible: next };
         });
         return;
@@ -180,10 +181,11 @@ export const TestLab: React.FC = () => {
                 saveSettings({ dockVisible: next });
                 overlayRef.current?.setDockMinimized(!next);
                 overlayRef.current?.setDockVisible(true);
-                addLog(next ? 'HUD expanded via button' : 'HUD minimized via button');
+                addLog(next ? `HUD expanded via button` : `HUD minimized via button`);
                 return { ...prev, dockVisible: next };
               });
             }}
+            title={getToggleShortcutFullLabel()}
             style={{
               background: 'rgba(99, 102, 241, 0.2)',
               border: '1px solid rgba(99, 102, 241, 0.4)',
@@ -195,7 +197,7 @@ export const TestLab: React.FC = () => {
               cursor: 'pointer'
             }}
           >
-            Toggle HUD (Alt+M)
+            Toggle HUD ({getToggleShortcutText()})
           </button>
         </div>
       </header>

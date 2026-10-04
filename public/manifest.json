@@ -22,18 +22,33 @@
     "type": "module"
   },
   "permissions": [
-    "storage",
-    "unlimitedStorage"
+    "storage"
   ],
   "host_permissions": [
-    "<all_urls>",
+    "https://meet.google.com/*",
+    "https://discord.com/*",
+    "https://*.zoom.us/*",
+    "https://teams.microsoft.com/*",
+    "https://teams.live.com/*",
+    "https://*.slack.com/*",
+    "https://facetime.apple.com/*",
+    "https://web.whatsapp.com/*",
     "https://api.imgflip.com/*",
     "https://meme-api.com/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "<all_urls>"
+        "https://meet.google.com/*",
+        "https://discord.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://*.slack.com/*",
+        "https://facetime.apple.com/*",
+        "https://web.whatsapp.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
       ],
       "js": ["content.js"],
       "run_at": "document_idle",
@@ -41,7 +56,16 @@
     },
     {
       "matches": [
-        "<all_urls>"
+        "https://meet.google.com/*",
+        "https://discord.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://*.slack.com/*",
+        "https://facetime.apple.com/*",
+        "https://web.whatsapp.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
       ],
       "js": ["inject.js"],
       "run_at": "document_start",
@@ -57,7 +81,18 @@
         "icons/*",
         "assets/*"
       ],
-      "matches": ["<all_urls>"]
+      "matches": [
+        "https://meet.google.com/*",
+        "https://discord.com/*",
+        "https://*.zoom.us/*",
+        "https://teams.microsoft.com/*",
+        "https://teams.live.com/*",
+        "https://*.slack.com/*",
+        "https://facetime.apple.com/*",
+        "https://web.whatsapp.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*"
+      ]
     }
   ]
 }

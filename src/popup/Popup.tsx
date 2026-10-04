@@ -212,22 +212,21 @@ export const Popup: React.FC = () => {
         </div>
       </header>
 
-      {/* Explicit Chrome Extension Scope Callout */}
+      {/* Chrome Extension Scope Pill */}
       <div style={{
         background: 'rgba(99, 102, 241, 0.1)',
         border: '1px solid rgba(129, 140, 248, 0.25)',
-        borderRadius: 10,
-        padding: '10px 12px',
-        marginBottom: 12,
+        borderRadius: 8,
+        padding: '6px 10px',
+        marginBottom: 10,
         display: 'flex',
-        alignItems: 'flex-start',
-        gap: 8
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 11,
+        color: '#cbd5e1'
       }}>
-        <span style={{ fontSize: 15 }}>🌐</span>
-        <div style={{ fontSize: 11, lineHeight: 1.45, color: '#cbd5e1' }}>
-          <strong style={{ color: '#fff', display: 'block', marginBottom: 2 }}>Chrome Extension for Browser Video Calls</strong>
-          Works in <strong>Google Chrome</strong> tabs on video call websites (Google Meet, Discord Web at <code style={{ color: '#a5b4fc' }}>discord.com</code>, Zoom Web, Teams Web, Slack Huddles, FaceTime Web). Does not run inside standalone desktop applications.
-        </div>
+        <span>🌐</span>
+        <span><strong>Chrome Extension</strong> • Google Meet, Discord Web, Zoom, Teams</span>
       </div>
 
       {/* Master Toggle */}

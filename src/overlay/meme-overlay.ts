@@ -3,6 +3,7 @@ import { FloatingDock } from './floating-dock';
 import { OVERLAY_CSS } from './overlay-styles';
 import { resolveMediaUrl, fetchAsDataUrl, findFirstAvailableHotkey } from '../shared/media-resolver';
 import { saveSettings, updateMemeHotkey, findClashingMeme } from '../shared/storage';
+import { getToggleShortcutText } from '../shared/platform';
 
 export interface MemeOverlayCallbacks {
   onTriggerMeme?: (meme: MemeItem) => void;
@@ -57,7 +58,7 @@ export class MemeOverlayManager {
           },
           onCloseDock: () => {
             this.callbacks.onCloseDock?.();
-            this.showToast('🎭 Deck Minimized • Press Alt+M or click pebble to reopen');
+            this.showToast(`🎭 Deck Minimized • Press ${getToggleShortcutText()} or click pebble to reopen`);
           },
           onPositionChange: (pos) => {
             this.settings.position = pos;

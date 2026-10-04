@@ -1,5 +1,6 @@
 import { MemeItem, MemeOverlayPosition } from '../shared/types';
 import { assignDefaultHotkey } from '../shared/media-resolver';
+import { getToggleShortcutText, getToggleShortcutFullLabel } from '../shared/platform';
 
 export interface FloatingDockCallbacks {
   onTriggerMeme: (meme: MemeItem) => void;
@@ -161,7 +162,7 @@ export class FloatingDock {
     const searchInput = document.createElement('input');
     searchInput.type = 'text';
     searchInput.className = 'memecord-search-input';
-    searchInput.placeholder = 'Filter memes or key...';
+    searchInput.placeholder = 'Search...';
     searchInput.addEventListener('input', () => {
       this.searchQuery = searchInput.value.trim().toLowerCase();
       this.renderCards();
@@ -175,62 +176,36 @@ export class FloatingDock {
     const actions = document.createElement('div');
     actions.className = 'memecord-deck-actions';
 
-    // Edit Toggle
+    // Edit Toggle Button (Icon only)
     const editBtn = document.createElement('button');
     editBtn.className = 'memecord-deck-action-btn edit-btn';
-    editBtn.title = 'Edit keybindings or remove memes';
-    editBtn.textContent = '✏️ Edit';
+    editBtn.title = 'Edit keybindings & memes';
+    editBtn.innerHTML = `<span>✏️</span>`;
     editBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       playHapticSound('pop');
       this.toggleEditMode();
       editBtn.classList.toggle('active', this.isEditMode);
-      editBtn.textContent = this.isEditMode ? '✓ Done' : '✏️ Edit';
+      editBtn.innerHTML = this.isEditMode ? `<span>✓</span>` : `<span>✏️</span>`;
     });
     actions.appendChild(editBtn);
 
-    // Add Meme Button
+    // Add Meme Button (Icon only)
     const addBtn = document.createElement('button');
     addBtn.className = 'memecord-deck-action-btn add-btn';
-    addBtn.title = 'Add new meme (URL, GIF, Tenor)';
-    addBtn.innerHTML = `<span>+ Add</span>`;
+    addBtn.title = 'Add new meme (URL, GIF)';
+    addBtn.innerHTML = `<span style="font-size: 13px; font-weight: 800; line-height: 1;">＋</span>`;
     addBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       playHapticSound('pop');
       if (this.isEditMode) {
         this.toggleEditMode();
         editBtn.classList.remove('active');
-        editBtn.textContent = '✏️ Edit';
+        editBtn.innerHTML = `<span>✏️</span>`;
       }
       this.callbacks.onAddMeme();
     });
     actions.appendChild(addBtn);
-
-    // Minimize Button (Dedicated)
-    const minBtn = document.createElement('button');
-    minBtn.className = 'memecord-deck-action-btn minimize-btn';
-    minBtn.title = 'Minimize HUD (Alt+M)';
-    minBtn.innerHTML = `
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-        <line x1="4" y1="12" x2="20" y2="12"></line>
-      </svg>
-    `;
-    minBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setMinimized(true);
-    });
-    actions.appendChild(minBtn);
-
-    // Close Button
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'memecord-deck-action-btn close-btn';
-    closeBtn.title = 'Close HUD (Alt+M)';
-    closeBtn.textContent = '✕';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setMinimized(true);
-    });
-    actions.appendChild(closeBtn);
 
     header.appendChild(actions);
     deck.appendChild(header);
@@ -242,34 +217,28 @@ export class FloatingDock {
     this.renderCards();
     deck.appendChild(gridContainer);
 
-    // Footer Bar
+    // Footer Bar (Clean Icon-Driven UI)
     const footer = document.createElement('div');
     footer.className = 'memecord-deck-footer';
 
     const hint = document.createElement('div');
     hint.className = 'memecord-deck-hint';
-    hint.innerHTML = `<span>🌐 Chrome Extension • Press <strong>[1–9]</strong> during call</span>`;
-    hint.title = 'Active on video call websites in Google Chrome (Google Meet, Discord Web at discord.com, Zoom, Teams, Slack, FaceTime). Not for standalone desktop apps.';
+    hint.innerHTML = `<span title="Press 1–9 to trigger memes">⌨️ [1–9]</span>`;
 
     const posWrap = document.createElement('div');
     posWrap.className = 'memecord-deck-pos-wrap';
 
-    const posLabel = document.createElement('span');
-    posLabel.style.fontSize = '10px';
-    posLabel.style.color = '#94a3b8';
-    posLabel.textContent = 'Pos:';
-    posWrap.appendChild(posLabel);
-
-    const positions: { key: MemeOverlayPosition; label: string }[] = [
-      { key: 'center', label: 'Center' },
-      { key: 'top-right', label: 'Top-R' },
-      { key: 'bottom-right', label: 'Bot-R' }
+    const positions: { key: MemeOverlayPosition; icon: string; title: string }[] = [
+      { key: 'center', icon: '⊙', title: 'Position: Center' },
+      { key: 'top-right', icon: '↗', title: 'Position: Top-Right' },
+      { key: 'bottom-right', icon: '↘', title: 'Position: Bottom-Right' }
     ];
 
     positions.forEach((p) => {
       const btn = document.createElement('button');
       btn.className = `memecord-pos-pill ${this.currentPosition === p.key ? 'active' : ''}`;
-      btn.textContent = p.label;
+      btn.textContent = p.icon;
+      btn.title = p.title;
       btn.dataset.pos = p.key;
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -288,18 +257,19 @@ export class FloatingDock {
     parent.appendChild(deck);
     this.element = deck;
 
-    // 2. Minimized Summon Pebble with Logo from public/icons
+    // 2. Minimized Summon Pebble with Logo & OS-Aware Shortcut
     const bubble = document.createElement('div');
     bubble.className = 'memecord-summon-bubble';
-    bubble.title = 'Memecord HUD Minimized - Click to open (Alt+M)';
+    bubble.title = `Memecord (${getToggleShortcutFullLabel()})`;
     const logoUrl = resolveThumbUrl('icons/logo.png');
+    const shortcutLabel = getToggleShortcutText();
     bubble.innerHTML = `
       <div class="memecord-summon-logo-wrap">
         <img src="${logoUrl}" class="memecord-summon-logo-img" alt="Memecord Logo" />
       </div>
       <div class="memecord-summon-content">
         <span class="memecord-summon-label">Memecord</span>
-        <span class="memecord-summon-key">Alt+M</span>
+        <span class="memecord-summon-key">${shortcutLabel}</span>
       </div>
     `;
     bubble.style.display = 'none';
@@ -734,7 +704,7 @@ export class FloatingDock {
     // 4. Minimize action
     const closeItem = document.createElement('button');
     closeItem.className = 'memecord-menu-item';
-    closeItem.innerHTML = `<span>✕</span><span>Minimize Deck (Alt+M)</span>`;
+    closeItem.innerHTML = `<span>⤓</span><span>Minimize (${getToggleShortcutText()})</span>`;
     closeItem.addEventListener('click', (e) => {
       e.stopPropagation();
       this.closeContextMenu();

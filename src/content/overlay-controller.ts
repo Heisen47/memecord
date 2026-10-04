@@ -2,6 +2,7 @@ import { MemeOverlayManager } from '../overlay/meme-overlay';
 import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storage';
 import { AppSettings, ExtensionMessage, MemeItem } from '../shared/types';
 import { assignDefaultHotkey, fetchAsDataUrl } from '../shared/media-resolver';
+import { isToggleShortcutPressed, getToggleShortcutText } from '../shared/platform';
 import '../overlay/overlay.css';
 
 export class OverlayController {
@@ -321,15 +322,15 @@ export class OverlayController {
         return;
       }
 
-      // Check Alt+M hotkey to toggle dock visibility
-      if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+      // Check OS-aware hotkey to toggle dock visibility (⌥⇧M on Mac, Alt+M on Win)
+      if (isToggleShortcutPressed(e)) {
         e.preventDefault();
         const next = !this.settings.dockVisible;
         saveSettings({ dockVisible: next });
         this.settings.dockVisible = next;
         this.overlay?.setDockMinimized(!next);
         this.overlay?.setDockVisible(true);
-        this.overlay?.showToast(next ? '🎭 Memecord HUD Expanded' : '🎭 Memecord HUD Minimized (Alt+M)');
+        this.overlay?.showToast(next ? '🎭 Memecord HUD Expanded' : `🎭 Memecord Minimized (${getToggleShortcutText()})`);
         return;
       }
 
