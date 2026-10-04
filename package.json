@@ -1,7 +1,7 @@
 {
-  "name": "mememeet",
-  "version": "1.0.0",
-  "description": "Chrome Extension for Google Meet Gesture-Controlled Memes",
+  "name": "memecord",
+  "version": "1.2.0",
+  "description": "Memecord - Live Meeting Meme Camera Overlay & Soundboard",
   "scripts": {
     "dev": "vite",
     "build": "node scripts/build.js",

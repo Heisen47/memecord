@@ -86,6 +86,13 @@ export const TestLab: React.FC = () => {
           setSettings(updated);
           addLog(`Deleted meme: ${memeId}`);
         },
+        onUpdateHotkey: (memeId, newHotkey) => {
+          setSettings((prev) => ({
+            ...prev,
+            memes: prev.memes.map((m) => (m.id === memeId ? { ...m, hotkey: newHotkey } : m))
+          }));
+          addLog(`Rebound meme ${memeId} to [${newHotkey}]`);
+        },
         onCloseDock: () => {
           addLog('HUD closed/minimized via close button. Click floating bubble or press Alt+M.');
         }

@@ -2,11 +2,13 @@ import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { FloatingDock } from './floating-dock';
 import { OVERLAY_CSS } from './overlay-styles';
 import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey } from '../shared/media-resolver';
+import { saveSettings, updateMemeHotkey } from '../shared/storage';
 
 export interface MemeOverlayCallbacks {
   onTriggerMeme?: (meme: MemeItem) => void;
   onAddMeme?: (meme: MemeItem) => void;
   onDeleteMeme?: (memeId: string) => void;
+  onUpdateHotkey?: (memeId: string, newHotkey: string) => void;
   onCloseDock?: () => void;
 }
 
@@ -29,24 +31,42 @@ export class MemeOverlayManager {
     this.initRoot();
 
     if (this.root) {
-      this.floatingDock = new FloatingDock(this.root, this.settings.memes, {
-        onTriggerMeme: (meme) => {
-          this.callbacks.onTriggerMeme?.(meme);
-          this.showMeme(meme);
+      this.floatingDock = new FloatingDock(
+        this.root,
+        this.settings.memes,
+        {
+          onTriggerMeme: (meme) => {
+            this.callbacks.onTriggerMeme?.(meme);
+            this.showMeme(meme);
+          },
+          onAddMeme: () => {
+            this.openQuickAddModal();
+          },
+          onDeleteMeme: (memeId) => {
+            const meme = this.settings.memes.find((m) => m.id === memeId);
+            this.callbacks.onDeleteMeme?.(memeId);
+            this.showToast(`🗑️ Removed "${meme?.name || 'Meme'}" from deck`);
+          },
+          onUpdateHotkey: async (memeId, newHotkey) => {
+            const meme = this.settings.memes.find((m) => m.id === memeId);
+            const updated = await updateMemeHotkey(memeId, newHotkey);
+            this.settings = updated;
+            this.updateSettings(updated);
+            this.callbacks.onUpdateHotkey?.(memeId, newHotkey);
+            this.showToast(`⌨️ Rebound "${meme?.name || 'Meme'}" to Key [${newHotkey}]`);
+          },
+          onCloseDock: () => {
+            this.callbacks.onCloseDock?.();
+            this.showToast('🎭 Deck Minimized • Press Alt+M or click pebble to reopen');
+          },
+          onPositionChange: (pos) => {
+            this.settings.position = pos;
+            saveSettings({ position: pos });
+            this.showToast(`Overlay position: ${pos}`);
+          }
         },
-        onAddMeme: () => {
-          this.openQuickAddModal();
-        },
-        onDeleteMeme: (memeId) => {
-          const meme = this.settings.memes.find((m) => m.id === memeId);
-          this.callbacks.onDeleteMeme?.(memeId);
-          this.showToast(`🗑️ Removed "${meme?.name || 'Meme'}" from dock`);
-        },
-        onCloseDock: () => {
-          this.callbacks.onCloseDock?.();
-          this.showToast('🎭 HUD Minimized • Press Alt+M or click bubble to reopen');
-        }
-      });
+        this.settings.position
+      );
 
       this.floatingDock.setVisible(this.settings.dockVisible && this.settings.enabled);
     }
@@ -55,6 +75,7 @@ export class MemeOverlayManager {
   public updateSettings(settings: AppSettings) {
     this.settings = settings;
     this.floatingDock?.updateMemes(settings.memes);
+    this.floatingDock?.setPosition(settings.position);
     this.floatingDock?.setVisible(settings.dockVisible && settings.enabled);
   }
 
@@ -335,8 +356,9 @@ export class MemeOverlayManager {
       try {
         // Resolve media
         const resolved = await resolveMediaUrl(rawUrl);
-        // Convert to base64 Data URL to guarantee 0 CSP blocks on Google Meet / Discord / Zoom
-        const dataUrl = await fetchAsDataUrl(resolved.url);
+        // Store clean resolved URL (or data URL if local upload).
+        // Compositor & overlay convert to base64 on-the-fly at trigger time.
+        const assetUrl = resolved.url;
 
         const name = nameInput.value.trim() || resolved.name || 'Custom Meme';
         const emoji = emojiInput.value.trim() || '✨';
@@ -346,7 +368,7 @@ export class MemeOverlayManager {
           id: `meme_${Date.now()}`,
           name,
           emoji,
-          assetUrl: dataUrl,
+          assetUrl,
           hotkey,
           durationMs: this.settings.defaultDurationMs || 2500
         };

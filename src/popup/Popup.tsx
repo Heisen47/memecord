@@ -114,14 +114,14 @@ export const Popup: React.FC = () => {
 
     try {
       const resolved = await resolveMediaUrl(raw);
-      const dataUrl = await fetchAsDataUrl(resolved.url);
+      const assetUrl = resolved.url;
 
       const hotkey = newHotkey.trim() || assignDefaultHotkey(settings.memes.length);
       const meme: MemeItem = {
         id: `meme_${Date.now()}`,
         name: newName.trim() || resolved.name || 'Custom Meme',
         emoji: newEmoji.trim() || '✨',
-        assetUrl: dataUrl,
+        assetUrl,
         hotkey,
         durationMs: settings.defaultDurationMs
       };

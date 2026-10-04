@@ -1,12 +1,14 @@
-import { MemeItem } from '../shared/types';
+import { MemeItem, MemeOverlayPosition } from '../shared/types';
 import { assignDefaultHotkey } from '../shared/media-resolver';
 
 export interface FloatingDockCallbacks {
   onTriggerMeme: (meme: MemeItem) => void;
   onAddMeme: () => void;
   onDeleteMeme: (memeId: string) => void;
+  onUpdateHotkey?: (memeId: string, newHotkey: string) => void;
   onToggleDock?: () => void;
   onCloseDock?: () => void;
+  onPositionChange?: (position: MemeOverlayPosition) => void;
 }
 
 function playHapticSound(type: 'pop' | 'minimize' | 'expand' | 'delete' = 'pop') {
@@ -52,14 +54,29 @@ function playHapticSound(type: 'pop' | 'minimize' | 'expand' | 'delete' = 'pop')
   } catch (_) {}
 }
 
+function resolveThumbUrl(assetUrl: string): string {
+  if (!assetUrl) return '';
+  if (assetUrl.startsWith('http://') || assetUrl.startsWith('https://') || assetUrl.startsWith('data:')) {
+    return assetUrl;
+  }
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+    return chrome.runtime.getURL(assetUrl.replace(/^\//, ''));
+  }
+  return assetUrl.startsWith('/') ? assetUrl : `/${assetUrl}`;
+}
+
 export class FloatingDock {
   private element: HTMLElement | null = null;
   private summonBubble: HTMLElement | null = null;
-  private btnContainer: HTMLElement | null = null;
+  private gridContainer: HTMLElement | null = null;
+  private countBadge: HTMLElement | null = null;
   private contextMenu: HTMLElement | null = null;
+  private activeModal: HTMLElement | null = null;
   private isMinimized: boolean = false;
   private isEditMode: boolean = false;
   private isVisible: boolean = true;
+  private searchQuery: string = '';
+  private currentPosition: MemeOverlayPosition = 'center';
   private memes: MemeItem[] = [];
   private callbacks: FloatingDockCallbacks;
 
@@ -71,65 +88,186 @@ export class FloatingDock {
   private initialTop = 0;
   private activeDragTarget: HTMLElement | null = null;
 
-  constructor(parent: HTMLElement, memes: MemeItem[], callbacks: FloatingDockCallbacks) {
+  constructor(
+    parent: HTMLElement,
+    memes: MemeItem[],
+    callbacks: FloatingDockCallbacks,
+    initialPosition: MemeOverlayPosition = 'center'
+  ) {
     this.memes = memes;
     this.callbacks = callbacks;
+    this.currentPosition = initialPosition;
     this.createDom(parent);
     this.setupDraggable();
     this.setupOutsideClickListener();
   }
 
   private createDom(parent: HTMLElement) {
-    // 1. Full Floating HUD Dock
-    const dock = document.createElement('div');
-    dock.className = 'memecord-dock';
+    // 1. Spacious Floating Meme Deck
+    const deck = document.createElement('div');
+    deck.className = 'memecord-deck';
 
-    // Drag Handle
-    const dragHandle = document.createElement('div');
-    dragHandle.className = 'memecord-dock-drag-handle';
-    dragHandle.title = 'Drag toolbar anywhere';
-    dragHandle.textContent = '⋮⋮';
-    dock.appendChild(dragHandle);
+    // Header Bar
+    const header = document.createElement('div');
+    header.className = 'memecord-deck-header';
 
-    // Brand Badge / Collapse Toggle
-    const badge = document.createElement('div');
-    badge.className = 'memecord-dock-badge';
-    badge.title = 'Click to minimize HUD (Alt+M)';
+    // Brand and Drag
+    const brand = document.createElement('div');
+    brand.className = 'memecord-deck-brand';
+
+    const dragGrip = document.createElement('span');
+    dragGrip.className = 'memecord-drag-grip';
+    dragGrip.textContent = '⠿';
+    dragGrip.title = 'Drag Deck anywhere on screen';
 
     const dot = document.createElement('span');
     dot.className = 'memecord-status-dot';
 
-    const label = document.createElement('span');
-    label.id = 'memecord-dock-title';
-    label.textContent = '🎭 Memecord';
+    const title = document.createElement('span');
+    title.className = 'memecord-deck-title';
+    title.textContent = 'Memecord Deck';
 
-    badge.appendChild(dot);
-    badge.appendChild(label);
-    badge.addEventListener('click', (e) => {
+    const countBadge = document.createElement('span');
+    countBadge.className = 'memecord-count-badge';
+    countBadge.textContent = `${this.memes.length}`;
+    this.countBadge = countBadge;
+
+    brand.appendChild(dragGrip);
+    brand.appendChild(dot);
+    brand.appendChild(title);
+    brand.appendChild(countBadge);
+    header.appendChild(brand);
+
+    // Search Box
+    const searchBox = document.createElement('div');
+    searchBox.className = 'memecord-search-box';
+
+    const searchIcon = document.createElement('span');
+    searchIcon.className = 'memecord-search-icon';
+    searchIcon.textContent = '🔍';
+
+    const searchInput = document.createElement('input');
+    searchInput.type = 'text';
+    searchInput.className = 'memecord-search-input';
+    searchInput.placeholder = 'Filter memes or key...';
+    searchInput.addEventListener('input', () => {
+      this.searchQuery = searchInput.value.trim().toLowerCase();
+      this.renderCards();
+    });
+
+    searchBox.appendChild(searchIcon);
+    searchBox.appendChild(searchInput);
+    header.appendChild(searchBox);
+
+    // Actions
+    const actions = document.createElement('div');
+    actions.className = 'memecord-deck-actions';
+
+    // Edit Toggle
+    const editBtn = document.createElement('button');
+    editBtn.className = 'memecord-deck-action-btn edit-btn';
+    editBtn.title = 'Edit keybindings or remove memes';
+    editBtn.textContent = '✏️ Edit';
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      playHapticSound('pop');
+      this.toggleEditMode();
+      editBtn.classList.toggle('active', this.isEditMode);
+      editBtn.textContent = this.isEditMode ? '✓ Done' : '✏️ Edit';
+    });
+    actions.appendChild(editBtn);
+
+    // Add Meme Button
+    const addBtn = document.createElement('button');
+    addBtn.className = 'memecord-deck-action-btn add-btn';
+    addBtn.title = 'Add new meme (URL, GIF, Tenor)';
+    addBtn.innerHTML = `<span>+ Add</span>`;
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      playHapticSound('pop');
+      if (this.isEditMode) {
+        this.toggleEditMode();
+        editBtn.classList.remove('active');
+        editBtn.textContent = '✏️ Edit';
+      }
+      this.callbacks.onAddMeme();
+    });
+    actions.appendChild(addBtn);
+
+    // Close / Minimize Button
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'memecord-deck-action-btn close-btn';
+    closeBtn.title = 'Minimize Deck (Press Alt+M to reopen)';
+    closeBtn.textContent = '✕';
+    closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       this.setMinimized(true);
     });
-    dock.appendChild(badge);
+    actions.appendChild(closeBtn);
 
-    // Buttons Container
-    const btnContainer = document.createElement('div');
-    btnContainer.className = 'memecord-dock-buttons';
-    this.btnContainer = btnContainer;
+    header.appendChild(actions);
+    deck.appendChild(header);
 
-    this.renderButtons();
-    dock.appendChild(btnContainer);
+    // Meme Grid Body
+    const gridContainer = document.createElement('div');
+    gridContainer.className = 'memecord-deck-grid';
+    this.gridContainer = gridContainer;
+    this.renderCards();
+    deck.appendChild(gridContainer);
 
-    parent.appendChild(dock);
-    this.element = dock;
+    // Footer Bar
+    const footer = document.createElement('div');
+    footer.className = 'memecord-deck-footer';
 
-    // 2. Minimized Summon Pebble (Dynamic Island style micro-pill)
+    const hint = document.createElement('div');
+    hint.className = 'memecord-deck-hint';
+    hint.innerHTML = `<span>⌨️ Press hotkey <strong>[1–9, 0, Q...]</strong> during call</span>`;
+
+    const posWrap = document.createElement('div');
+    posWrap.className = 'memecord-deck-pos-wrap';
+
+    const posLabel = document.createElement('span');
+    posLabel.style.fontSize = '10px';
+    posLabel.style.color = '#94a3b8';
+    posLabel.textContent = 'Pos:';
+    posWrap.appendChild(posLabel);
+
+    const positions: { key: MemeOverlayPosition; label: string }[] = [
+      { key: 'center', label: 'Center' },
+      { key: 'top-right', label: 'Top-R' },
+      { key: 'bottom-right', label: 'Bot-R' }
+    ];
+
+    positions.forEach((p) => {
+      const btn = document.createElement('button');
+      btn.className = `memecord-pos-pill ${this.currentPosition === p.key ? 'active' : ''}`;
+      btn.textContent = p.label;
+      btn.dataset.pos = p.key;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        posWrap.querySelectorAll('.memecord-pos-pill').forEach((el) => el.classList.remove('active'));
+        btn.classList.add('active');
+        this.currentPosition = p.key;
+        this.callbacks.onPositionChange?.(p.key);
+      });
+      posWrap.appendChild(btn);
+    });
+
+    footer.appendChild(hint);
+    footer.appendChild(posWrap);
+    deck.appendChild(footer);
+
+    parent.appendChild(deck);
+    this.element = deck;
+
+    // 2. Minimized Summon Pebble (Dynamic Island style)
     const bubble = document.createElement('div');
     bubble.className = 'memecord-summon-bubble';
-    bubble.title = 'Open Memecord HUD (Alt+M)';
+    bubble.title = 'Open Memecord Deck (Alt+M)';
     bubble.innerHTML = `
       <span class="memecord-status-dot"></span>
       <span class="memecord-summon-icon">🎭</span>
-      <span class="memecord-summon-label">Memecord</span>
+      <span class="memecord-summon-label">Memecord Deck</span>
       <span class="memecord-summon-key">Alt+M</span>
     `;
     bubble.style.display = 'none';
@@ -146,43 +284,110 @@ export class FloatingDock {
 
   public updateMemes(memes: MemeItem[]) {
     this.memes = memes;
-    this.renderButtons();
+    if (this.countBadge) {
+      this.countBadge.textContent = `${memes.length}`;
+    }
+    this.renderCards();
   }
 
-  private renderButtons() {
-    if (!this.btnContainer) return;
-    this.btnContainer.innerHTML = '';
+  public setPosition(pos: MemeOverlayPosition) {
+    this.currentPosition = pos;
+    if (this.element) {
+      this.element.querySelectorAll('.memecord-pos-pill').forEach((el) => {
+        const btn = el as HTMLElement;
+        btn.classList.toggle('active', btn.dataset.pos === pos);
+      });
+    }
+  }
 
-    // Render meme buttons
-    this.memes.forEach((meme, index) => {
-      const btn = document.createElement('button');
-      btn.className = 'memecord-dock-btn';
-      btn.dataset.memeId = meme.id;
+  private renderCards() {
+    if (!this.gridContainer) return;
+    this.gridContainer.innerHTML = '';
 
-      // Meme emoji
-      const emojiSpan = document.createElement('span');
-      emojiSpan.textContent = meme.emoji || '✨';
-      btn.appendChild(emojiSpan);
+    const filtered = this.memes.filter((m, idx) => {
+      if (!this.searchQuery) return true;
+      const key = (m.hotkey || assignDefaultHotkey(idx)).toLowerCase();
+      return (
+        m.name.toLowerCase().includes(this.searchQuery) ||
+        (m.emoji && m.emoji.includes(this.searchQuery)) ||
+        key.includes(this.searchQuery)
+      );
+    });
 
-      // Hotkey badge (properly sequential: 1-9, 0, Q, W, E...)
-      const keyLabel = meme.hotkey || assignDefaultHotkey(index);
+    if (filtered.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'memecord-deck-empty';
+      empty.innerHTML = `
+        <span style="font-size: 26px;">🔍</span>
+        <div style="font-weight: 600; margin-top: 6px;">No memes matching "${this.searchQuery}"</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Try another search or add a new meme</div>
+      `;
+      this.gridContainer.appendChild(empty);
+      return;
+    }
+
+    // Render Meme Cards
+    filtered.forEach((meme, i) => {
+      const originalIdx = this.memes.findIndex((m) => m.id === meme.id);
+      const keyLabel = meme.hotkey || assignDefaultHotkey(originalIdx >= 0 ? originalIdx : i);
+
+      const card = document.createElement('div');
+      card.className = `memecord-card ${this.isEditMode ? 'wiggling edit-mode' : ''}`;
+      card.dataset.memeId = meme.id;
+      card.title = this.isEditMode
+        ? `Click to change keybinding [${keyLabel}]`
+        : `Click or press [${keyLabel}] to trigger`;
+
+      // Hotkey badge
       if (keyLabel) {
-        const keyBadge = document.createElement('span');
-        keyBadge.className = 'memecord-hotkey-badge';
-        keyBadge.textContent = keyLabel;
-        btn.appendChild(keyBadge);
+        const hotkeyBadge = document.createElement('button');
+        hotkeyBadge.className = `memecord-card-hotkey ${this.isEditMode ? 'editable' : ''}`;
+        hotkeyBadge.textContent = this.isEditMode ? `${keyLabel} ✎` : keyLabel;
+        hotkeyBadge.title = this.isEditMode ? 'Click to change keybinding' : `Hotkey [${keyLabel}]`;
+
+        if (this.isEditMode) {
+          hotkeyBadge.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.openKeybindingModal(meme);
+          });
+        }
+        card.appendChild(hotkeyBadge);
       }
 
-      // Hover Tooltip with meme title & hotkey
-      const tooltip = document.createElement('div');
-      tooltip.className = 'memecord-tooltip';
-      tooltip.innerHTML = `<span>${meme.name}</span>${keyLabel ? `<span style="color:#818cf8; font-weight:800;">[${keyLabel}]</span>` : ''}`;
-      btn.appendChild(tooltip);
+      // Thumbnail / Visual Preview
+      const thumbWrap = document.createElement('div');
+      thumbWrap.className = 'memecord-card-thumb-wrap';
 
-      // Red delete '✕' badge shown during Edit Mode
+      const thumbUrl = resolveThumbUrl(meme.assetUrl);
+      const img = document.createElement('img');
+      img.className = 'memecord-card-img';
+      img.alt = meme.name;
+      img.loading = 'lazy';
+      img.src = thumbUrl;
+
+      const emojiFallback = document.createElement('span');
+      emojiFallback.className = 'memecord-card-emoji-fallback';
+      emojiFallback.textContent = meme.emoji || '✨';
+
+      img.onerror = () => {
+        img.style.display = 'none';
+        emojiFallback.style.display = 'flex';
+      };
+
+      thumbWrap.appendChild(img);
+      thumbWrap.appendChild(emojiFallback);
+      card.appendChild(thumbWrap);
+
+      // Meme Name
+      const nameEl = document.createElement('div');
+      nameEl.className = 'memecord-card-name';
+      nameEl.textContent = meme.name;
+      card.appendChild(nameEl);
+
+      // Edit Mode Delete Badge
       if (this.isEditMode) {
-        const delBadge = document.createElement('span');
-        delBadge.className = 'memecord-delete-badge';
+        const delBadge = document.createElement('button');
+        delBadge.className = 'memecord-card-delete-badge';
         delBadge.textContent = '✕';
         delBadge.title = `Delete ${meme.name}`;
         delBadge.addEventListener('click', (e) => {
@@ -190,72 +395,154 @@ export class FloatingDock {
           playHapticSound('delete');
           this.callbacks.onDeleteMeme(meme.id);
         });
-        btn.appendChild(delBadge);
+        card.appendChild(delBadge);
       }
 
-      // Left click handler
-      btn.addEventListener('click', (e) => {
+      // Click Handler
+      card.addEventListener('click', (e) => {
         e.stopPropagation();
         if (this.isEditMode) {
-          playHapticSound('delete');
-          this.callbacks.onDeleteMeme(meme.id);
+          // In edit mode: clicking card opens keybinding editor!
+          playHapticSound('pop');
+          this.openKeybindingModal(meme);
         } else {
           playHapticSound('pop');
-          this.createClickRipple(btn);
+          this.createClickRipple(card);
           this.callbacks.onTriggerMeme(meme);
         }
       });
 
-      // Right click context menu (Instant remove or trigger)
-      btn.addEventListener('contextmenu', (e) => {
+      // Right-Click Context Menu
+      card.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.openContextMenu(e.clientX, e.clientY, meme);
       });
 
-      this.btnContainer!.appendChild(btn);
+      this.gridContainer!.appendChild(card);
     });
 
-    // Divider
-    const divider = document.createElement('div');
-    divider.className = 'memecord-dock-divider';
-    this.btnContainer.appendChild(divider);
-
-    // Edit / Manage Mode Toggle Button (✏️ / ✓)
-    const editBtn = document.createElement('button');
-    editBtn.className = `memecord-dock-btn action-btn edit-toggle ${this.isEditMode ? 'active' : ''}`;
-    editBtn.title = this.isEditMode ? 'Done managing memes' : 'Manage / Remove memes';
-    editBtn.textContent = this.isEditMode ? '✓' : '✏️';
-    editBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      playHapticSound('pop');
-      this.toggleEditMode();
-    });
-    this.btnContainer.appendChild(editBtn);
-
-    // Add Meme (+) Button
-    const addBtn = document.createElement('button');
-    addBtn.className = 'memecord-dock-btn action-btn add-btn';
-    addBtn.title = 'Add new meme (Paste Tenor, Giphy, or image URL)';
-    addBtn.textContent = '+';
-    addBtn.addEventListener('click', (e) => {
+    // Add Meme Tile at end of grid
+    const addCard = document.createElement('div');
+    addCard.className = 'memecord-card add-card';
+    addCard.title = 'Add new meme to deck';
+    addCard.innerHTML = `
+      <div class="memecord-add-card-icon">+</div>
+      <div class="memecord-card-name" style="color: #a5b4fc;">Add Meme</div>
+    `;
+    addCard.addEventListener('click', (e) => {
       e.stopPropagation();
       playHapticSound('pop');
       if (this.isEditMode) this.toggleEditMode();
       this.callbacks.onAddMeme();
     });
-    this.btnContainer.appendChild(addBtn);
+    this.gridContainer.appendChild(addCard);
+  }
 
-    // Dedicated Close (✕) Button
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'memecord-dock-btn action-btn close-btn';
-    closeBtn.title = 'Close HUD (Press Alt+M to reopen)';
-    closeBtn.innerHTML = '✕';
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.setMinimized(true);
+  public openKeybindingModal(meme: MemeItem) {
+    this.closeActiveModal();
+
+    let selectedKey = (meme.hotkey || assignDefaultHotkey(0)).toUpperCase();
+
+    const modal = document.createElement('div');
+    modal.className = 'memecord-keybind-modal';
+    modal.innerHTML = `
+      <div class="memecord-modal-title">
+        <span>⌨️ Change Keybinding</span>
+        <button class="memecord-modal-close" id="memecord-keybind-close-btn">&times;</button>
+      </div>
+
+      <div style="text-align: center; margin: 12px 0 14px 0;">
+        <div style="font-size: 32px; line-height: 1;">${meme.emoji || '✨'}</div>
+        <div style="font-size: 14px; font-weight: 800; color: #f8fafc; margin-top: 6px;">${meme.name}</div>
+        <div style="font-size: 11px; color: #94a3b8; margin-top: 2px;">Press any key on keyboard or select below</div>
+
+        <div class="memecord-keybind-display-box" id="memecord-keybind-box">
+          <span style="font-size: 10px; font-weight: 700; color: #a5b4fc; display: block; margin-bottom: 2px;">ACTIVE KEY</span>
+          <span class="memecord-keybind-large-key" id="memecord-keybind-val">${selectedKey}</span>
+          <span class="memecord-keybind-press-hint">⌨️ Press any key now...</span>
+        </div>
+      </div>
+
+      <div style="font-size: 11px; font-weight: 700; color: #94a3b8; margin-bottom: 6px;">Quick Presets:</div>
+      <div class="memecord-keybind-quick-grid" id="memecord-quick-grid">
+        ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Q', 'W', 'E', 'R', 'T', 'Y', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B']
+          .map((k) => `<button class="memecord-quick-key-btn ${k === selectedKey ? 'active' : ''}" data-key="${k}">${k}</button>`)
+          .join('')}
+      </div>
+
+      <div class="memecord-modal-btn-row" style="margin-top: 16px;">
+        <button class="memecord-btn-secondary" id="memecord-keybind-cancel">Cancel</button>
+        <button class="memecord-btn-primary" id="memecord-keybind-save">Save Keybinding</button>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+    this.activeModal = modal;
+
+    const valEl = modal.querySelector('#memecord-keybind-val') as HTMLElement;
+    const quickGrid = modal.querySelector('#memecord-quick-grid') as HTMLElement;
+
+    const selectKey = (k: string) => {
+      selectedKey = k.trim().toUpperCase();
+      valEl.textContent = selectedKey;
+      quickGrid.querySelectorAll('.memecord-quick-key-btn').forEach((el) => {
+        const btn = el as HTMLElement;
+        btn.classList.toggle('active', btn.dataset.key === selectedKey);
+      });
+      playHapticSound('pop');
+    };
+
+    // Quick keys click handler
+    quickGrid.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest('.memecord-quick-key-btn') as HTMLElement;
+      if (btn && btn.dataset.key) {
+        e.stopPropagation();
+        selectKey(btn.dataset.key);
+      }
     });
-    this.btnContainer.appendChild(closeBtn);
+
+    // Keyboard listener on window while modal is open
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) return;
+      if (e.key === 'Escape') {
+        cleanup();
+        return;
+      }
+      if (e.key === 'Enter') {
+        saveAndClose();
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      selectKey(e.key);
+    };
+
+    window.addEventListener('keydown', onKeyDown, true);
+
+    const cleanup = () => {
+      window.removeEventListener('keydown', onKeyDown, true);
+      this.closeActiveModal();
+    };
+
+    const saveAndClose = () => {
+      if (selectedKey) {
+        this.callbacks.onUpdateHotkey?.(meme.id, selectedKey);
+        playHapticSound('pop');
+      }
+      cleanup();
+    };
+
+    modal.querySelector('#memecord-keybind-close-btn')?.addEventListener('click', cleanup);
+    modal.querySelector('#memecord-keybind-cancel')?.addEventListener('click', cleanup);
+    modal.querySelector('#memecord-keybind-save')?.addEventListener('click', saveAndClose);
+  }
+
+  private closeActiveModal() {
+    if (this.activeModal && this.activeModal.parentElement) {
+      this.activeModal.parentElement.removeChild(this.activeModal);
+      this.activeModal = null;
+    }
   }
 
   private createClickRipple(target: HTMLElement) {
@@ -270,6 +557,7 @@ export class FloatingDock {
     playHapticSound(minimized ? 'minimize' : 'expand');
 
     if (minimized) {
+      this.closeActiveModal();
       if (this.element) {
         this.element.classList.add('hiding');
         setTimeout(() => {
@@ -308,7 +596,7 @@ export class FloatingDock {
     if (!this.summonBubble || !this.element) return;
     const rect = this.element.getBoundingClientRect();
     if (rect.left > 0 && rect.top > 0) {
-      this.summonBubble.style.left = `${Math.min(window.innerWidth - 120, rect.left)}px`;
+      this.summonBubble.style.left = `${Math.min(window.innerWidth - 180, rect.left)}px`;
       this.summonBubble.style.top = `${Math.min(window.innerHeight - 50, rect.top)}px`;
       this.summonBubble.style.bottom = 'auto';
       this.summonBubble.style.transform = 'none';
@@ -318,13 +606,9 @@ export class FloatingDock {
   private toggleEditMode() {
     this.isEditMode = !this.isEditMode;
     if (this.element) {
-      if (this.isEditMode) {
-        this.element.classList.add('edit-mode');
-      } else {
-        this.element.classList.remove('edit-mode');
-      }
+      this.element.classList.toggle('edit-mode', this.isEditMode);
     }
-    this.renderButtons();
+    this.renderCards();
   }
 
   private openContextMenu(x: number, y: number, meme: MemeItem) {
@@ -333,9 +617,8 @@ export class FloatingDock {
     const menu = document.createElement('div');
     menu.className = 'memecord-context-menu';
 
-    // Menu bounds positioning
-    const left = Math.min(x, window.innerWidth - 180);
-    const top = Math.max(10, y - 90);
+    const left = Math.min(x, window.innerWidth - 200);
+    const top = Math.max(10, y - 110);
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
 
@@ -351,10 +634,21 @@ export class FloatingDock {
     });
     menu.appendChild(triggerItem);
 
-    // 2. Delete action
+    // 2. Change Keybinding action
+    const keyItem = document.createElement('button');
+    keyItem.className = 'memecord-menu-item';
+    keyItem.innerHTML = `<span>⌨️</span><span>Change Key [${meme.hotkey || 'None'}]</span>`;
+    keyItem.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.closeContextMenu();
+      this.openKeybindingModal(meme);
+    });
+    menu.appendChild(keyItem);
+
+    // 3. Delete action
     const deleteItem = document.createElement('button');
     deleteItem.className = 'memecord-menu-item danger';
-    deleteItem.innerHTML = `<span>🗑️</span><span>Remove from Dock</span>`;
+    deleteItem.innerHTML = `<span>🗑️</span><span>Remove from Deck</span>`;
     deleteItem.addEventListener('click', (e) => {
       e.stopPropagation();
       this.closeContextMenu();
@@ -363,10 +657,10 @@ export class FloatingDock {
     });
     menu.appendChild(deleteItem);
 
-    // 3. Close HUD
+    // 4. Minimize action
     const closeItem = document.createElement('button');
     closeItem.className = 'memecord-menu-item';
-    closeItem.innerHTML = `<span>✕</span><span>Hide HUD (Alt+M)</span>`;
+    closeItem.innerHTML = `<span>✕</span><span>Minimize Deck (Alt+M)</span>`;
     closeItem.addEventListener('click', (e) => {
       e.stopPropagation();
       this.closeContextMenu();
@@ -394,9 +688,18 @@ export class FloatingDock {
   private setupDraggable() {
     const bindDrag = (targetEl: HTMLElement) => {
       const onMouseDown = (e: MouseEvent) => {
-        if ((e.target as HTMLElement).tagName === 'BUTTON' || (e.target as HTMLElement).tagName === 'INPUT') {
+        const target = e.target as HTMLElement;
+        if (
+          target.tagName === 'BUTTON' ||
+          target.tagName === 'INPUT' ||
+          target.closest('button') ||
+          target.closest('input') ||
+          target.closest('.memecord-card') ||
+          target.closest('.memecord-keybind-modal')
+        ) {
           return;
         }
+
         this.isDragging = true;
         this.activeDragTarget = targetEl;
         this.dragStartX = e.clientX;
@@ -466,7 +769,7 @@ export class FloatingDock {
       if (saved) {
         const { left, top } = JSON.parse(saved);
         if (typeof left === 'number' && typeof top === 'number') {
-          const maxLeft = window.innerWidth - 120;
+          const maxLeft = window.innerWidth - 180;
           const maxTop = window.innerHeight - 50;
           const safeLeft = Math.max(10, Math.min(maxLeft, left));
           const safeTop = Math.max(10, Math.min(maxTop, top));
@@ -491,6 +794,7 @@ export class FloatingDock {
   public setVisible(visible: boolean) {
     this.isVisible = visible;
     if (!visible) {
+      this.closeActiveModal();
       if (this.element) this.element.style.display = 'none';
       if (this.summonBubble) this.summonBubble.style.display = 'none';
     } else {
@@ -504,6 +808,7 @@ export class FloatingDock {
 
   public destroy() {
     this.closeContextMenu();
+    this.closeActiveModal();
     if (this.element && this.element.parentElement) {
       this.element.parentElement.removeChild(this.element);
       this.element = null;

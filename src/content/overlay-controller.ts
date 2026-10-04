@@ -35,6 +35,13 @@ export class OverlayController {
         this.settings = updated;
         this.overlay?.updateSettings(updated);
       },
+      onUpdateHotkey: (memeId, newHotkey) => {
+        if (this.settings) {
+          this.settings.memes = this.settings.memes.map((m) =>
+            m.id === memeId ? { ...m, hotkey: newHotkey } : m
+          );
+        }
+      },
       onCloseDock: () => {
         if (this.settings) {
           saveSettings({ dockVisible: false });
@@ -302,8 +309,9 @@ export class OverlayController {
     // Storage updates from popup
     if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
       chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === 'local' && changes.mememeet_settings) {
-          const newSettings = changes.mememeet_settings.newValue as AppSettings;
+        const change = changes.memecord_settings || changes.mememeet_settings;
+        if (areaName === 'local' && change) {
+          const newSettings = change.newValue as AppSettings;
           if (newSettings) {
             this.settings = newSettings;
             this.overlay?.updateSettings(newSettings);
