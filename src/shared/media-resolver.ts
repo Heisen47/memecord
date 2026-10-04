@@ -7,6 +7,8 @@ export interface ResolvedMedia {
   isVideo?: boolean;
 }
 
+const dataUrlCache = new Map<string, string>();
+
 export function assignDefaultHotkey(index: number): string {
   if (index < 9) return String(index + 1); // 1-9
   if (index === 9) return '0';
@@ -86,17 +88,50 @@ export async function resolveMediaUrl(rawUrl: string): Promise<ResolvedMedia> {
 }
 
 export async function fetchAsDataUrl(mediaUrl: string): Promise<string> {
-  // If already data or local asset, return as-is
-  if (mediaUrl.startsWith('data:') || mediaUrl.startsWith('memes/') || mediaUrl.startsWith('/memes/')) {
+  // If already data URL, return immediately
+  if (mediaUrl.startsWith('data:')) {
     return mediaUrl;
   }
 
+  // Check in-memory cache
+  if (dataUrlCache.has(mediaUrl)) {
+    return dataUrlCache.get(mediaUrl)!;
+  }
+
+  let fetchUrl = mediaUrl;
+  if (mediaUrl.startsWith('memes/') || mediaUrl.startsWith('/memes/')) {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+      fetchUrl = chrome.runtime.getURL(mediaUrl.replace(/^\//, ''));
+    }
+  }
+
+  // Local extension asset -> fetch directly and convert to base64 Data URL
+  if (fetchUrl.startsWith('chrome-extension://')) {
+    try {
+      const resp = await fetch(fetchUrl);
+      const blob = await resp.blob();
+      return new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const res = reader.result as string;
+          dataUrlCache.set(mediaUrl, res);
+          resolve(res);
+        };
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn('[Memecord] Failed to read local asset as data URL:', err);
+    }
+  }
+
+  // External web URL -> fetch via background proxy to bypass page CSP/CORS
   try {
     const res = await chrome.runtime.sendMessage({
       type: 'FETCH_MEDIA_AS_DATA_URL',
-      url: mediaUrl
+      url: fetchUrl
     });
     if (res && res.success && res.dataUrl) {
+      dataUrlCache.set(mediaUrl, res.dataUrl);
       return res.dataUrl;
     }
   } catch (err) {

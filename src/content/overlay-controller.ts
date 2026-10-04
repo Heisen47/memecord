@@ -1,7 +1,7 @@
 import { MemeOverlayManager } from '../overlay/meme-overlay';
 import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storage';
 import { AppSettings, ExtensionMessage, MemeItem } from '../shared/types';
-import { assignDefaultHotkey } from '../shared/media-resolver';
+import { assignDefaultHotkey, fetchAsDataUrl } from '../shared/media-resolver';
 import '../overlay/overlay.css';
 
 export class OverlayController {
@@ -9,6 +9,10 @@ export class OverlayController {
   private settings: AppSettings | null = null;
   private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private isDestroyed: boolean = false;
+  private isInCall: boolean = false;
+  private isCameraStreaming: boolean = false;
+  private callCheckIntervalId: any = null;
+  private spaObserver: MutationObserver | null = null;
 
   public async init() {
     this.settings = await getSettings();
@@ -33,44 +37,202 @@ export class OverlayController {
       }
     });
 
+    // Start with dock hidden unless already in call or in test lab
+    this.overlay.setDockVisible(false);
+
     // 3. Register Keyboard Shortcuts (1-9, 0, Q, W, E...)
     this.registerKeyboardShortcuts();
 
     // 4. Setup Storage and Message Listeners
     this.setupListeners();
 
-    // 5. Welcome indicator for meeting platforms
-    this.showPlatformWelcome();
+    // 5. Monitor Call State
+    this.setupCallStateMonitoring();
 
-    console.log('[Memecord] Universal Overlay & Virtual Camera Controller initialized.');
+    // Check immediately
+    this.checkCallState();
+
+    console.log('[Memecord] Call-sensitive Overlay Controller initialized.');
   }
 
-  public triggerMeme(meme: MemeItem) {
+  public async triggerMeme(meme: MemeItem) {
     if (!this.settings || !this.settings.enabled) return;
 
     // 1. Show local DOM overlay for immediate visual feedback
     this.overlay?.showMeme(meme);
 
-    // 2. Broadcast to Virtual Camera Compositor so other callers see meme on camera stream
-    let assetUrl = meme.assetUrl;
-    if (!assetUrl.startsWith('http') && !assetUrl.startsWith('data:')) {
-      if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-        assetUrl = chrome.runtime.getURL(assetUrl.replace(/^\//, ''));
-      }
+    // 2. Convert to base64 Data URL to guarantee 0 CORS issues and 0 canvas tainting
+    const dataUrl = await fetchAsDataUrl(meme.assetUrl);
+
+    const message = {
+      source: 'MEMECORD_CONTENT',
+      type: 'TRIGGER_CAMERA_MEME',
+      meme: {
+        ...meme,
+        assetUrl: dataUrl
+      },
+      position: this.settings.position || 'center'
+    };
+
+    // Broadcast to current window, child frames, and parent
+    window.postMessage(message, '*');
+
+    try {
+      document.querySelectorAll('iframe').forEach((f) => {
+        try {
+          f.contentWindow?.postMessage(message, '*');
+        } catch (_) {}
+      });
+    } catch (_) {}
+
+    if (window.parent && window.parent !== window) {
+      try {
+        window.parent.postMessage(message, '*');
+      } catch (_) {}
+    }
+  }
+
+  private isTestLab(): boolean {
+    const href = window.location.href;
+    const path = window.location.pathname;
+    return (
+      path.includes('/test/') ||
+      href.includes('test/index.html') ||
+      href.includes(':4182') ||
+      href.includes('localhost:5173')
+    );
+  }
+
+  private isOngoingVideoCall(): boolean {
+    // 1. Always active in test sandbox
+    if (this.isTestLab()) {
+      return true;
     }
 
-    window.postMessage(
-      {
-        source: 'MEMECORD_CONTENT',
-        type: 'TRIGGER_CAMERA_MEME',
-        meme: {
-          ...meme,
-          assetUrl
-        },
-        position: this.settings.position || 'center'
-      },
-      '*'
-    );
+    // 2. Active if webcam stream is running via inject compositor
+    if (this.isCameraStreaming) {
+      return true;
+    }
+
+    const host = window.location.hostname;
+    const path = window.location.pathname;
+
+    // 3. Google Meet
+    if (host.includes('meet.google.com')) {
+      const isMeetingUrl = /^\/[a-z]{3}-[a-z]{4}-[a-z]{3}/i.test(path) || path.includes('/_meet/');
+      if (!isMeetingUrl) return false;
+
+      // In lobby if join button exists
+      const inLobby = Boolean(
+        document.querySelector('button[aria-label*="Join now" i], button[aria-label*="Ask to join" i]')
+      );
+      if (inLobby) return false;
+
+      // In call if leave button or call controls exist
+      const hasLeave = Boolean(
+        document.querySelector(
+          'button[aria-label*="Leave call" i], button[data-tooltip*="Leave call" i], button[aria-label*="End call" i]'
+        )
+      );
+      const hasControls = Boolean(
+        document.querySelector(
+          'button[aria-label*="Turn off microphone" i], button[aria-label*="Turn on microphone" i], button[aria-label*="Turn off camera" i], button[aria-label*="Raise hand" i]'
+        )
+      );
+      return hasLeave || hasControls;
+    }
+
+    // 4. Discord Web
+    if (host.includes('discord.com')) {
+      const hasDisconnect = Boolean(
+        document.querySelector('button[aria-label*="Disconnect" i], button[aria-label*="Leave Call" i]')
+      );
+      const inVideoGrid = Boolean(
+        document.querySelector('div[class*="videoGrid"], div[class*="callContainer"], div[class*="wrapperInCall"]')
+      );
+      return hasDisconnect || inVideoGrid;
+    }
+
+    // 5. Zoom Web Client
+    if (host.includes('zoom.us')) {
+      if (!path.includes('/wc/')) return false;
+      const inCall = Boolean(
+        document.querySelector('button[aria-label*="Leave" i], button[aria-label*="End" i], .footer-button__button--leave')
+      );
+      return inCall;
+    }
+
+    // 6. Microsoft Teams
+    if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) {
+      const inCall = Boolean(
+        document.querySelector('button[aria-label*="Leave" i], button#hangup-button, button[id*="hangup"]')
+      );
+      return inCall;
+    }
+
+    // 7. Slack Calls / Huddles
+    if (host.includes('slack.com')) {
+      const inCall = Boolean(
+        document.querySelector('button[data-qa*="leave" i], button[aria-label*="Leave call" i], div[data-qa*="huddle"]')
+      );
+      return inCall;
+    }
+
+    // 8. FaceTime Web
+    if (host.includes('facetime.apple.com')) {
+      const inCall = Boolean(
+        document.querySelector('button[aria-label*="Leave" i], button[aria-label*="End" i]')
+      );
+      return inCall;
+    }
+
+    // Not in a video call on any known meeting platform
+    return false;
+  }
+
+  private checkCallState() {
+    const inCall = this.isOngoingVideoCall();
+
+    if (inCall && !this.isInCall) {
+      this.isInCall = true;
+      console.log('[Memecord] Ongoing video call detected -> showing HUD & enabling hotkeys');
+      if (this.settings?.dockVisible && this.settings.enabled) {
+        this.overlay?.setDockVisible(true);
+      }
+      this.overlay?.showToast('🎭 Memecord Active! Press 1–9 or click dock');
+    } else if (!inCall && this.isInCall) {
+      this.isInCall = false;
+      console.log('[Memecord] Call ended / outside video call -> hiding HUD');
+      this.overlay?.setDockVisible(false);
+    }
+  }
+
+  private setupCallStateMonitoring() {
+    // 1. Listen for camera stream changes from inject.ts
+    window.addEventListener('message', (event) => {
+      if (event.data?.source === 'MEMECORD_CAMERA' && event.data?.type === 'CAMERA_CALL_STATE') {
+        this.isCameraStreaming = Boolean(event.data.active);
+        this.checkCallState();
+      }
+    });
+
+    // 2. Periodic poll check (1s)
+    this.callCheckIntervalId = setInterval(() => {
+      this.checkCallState();
+    }, 1000);
+
+    // 3. DOM mutation observer for SPA navigation & call UI updates
+    this.spaObserver = new MutationObserver(() => {
+      this.checkCallState();
+    });
+
+    const target = document.body || document.documentElement;
+    if (target) {
+      this.spaObserver.observe(target, {
+        childList: true,
+        subtree: true
+      });
+    }
   }
 
   private ensureInjectedScript() {
@@ -84,26 +246,10 @@ export class OverlayController {
     } catch (_) {}
   }
 
-  private showPlatformWelcome() {
-    const host = window.location.hostname;
-    let platform = '';
-    if (host.includes('meet.google.com')) platform = 'Google Meet';
-    else if (host.includes('discord.com')) platform = 'Discord';
-    else if (host.includes('zoom.us')) platform = 'Zoom';
-    else if (host.includes('teams.microsoft.com') || host.includes('teams.live.com')) platform = 'Microsoft Teams';
-    else if (host.includes('slack.com')) platform = 'Slack';
-    else if (host.includes('facetime.apple.com')) platform = 'FaceTime';
-
-    if (platform && this.settings?.enabled) {
-      setTimeout(() => {
-        this.overlay?.showToast(`Memecord Camera active on ${platform}! Press 1–9 or click dock 🎭`);
-      }, 1000);
-    }
-  }
-
   private registerKeyboardShortcuts() {
     this.keydownHandler = (e: KeyboardEvent) => {
-      if (!this.settings || !this.settings.enabled) return;
+      // ONLY trigger hotkeys when inside an active video call!
+      if (!this.settings || !this.settings.enabled || !this.isInCall) return;
 
       // Don't trigger if user is typing in chat / input / textarea
       const activeEl = document.activeElement as HTMLElement | null;
@@ -154,6 +300,9 @@ export class OverlayController {
             this.settings = newSettings;
             this.overlay?.updateSettings(newSettings);
 
+            // Re-apply dock visibility scoped to in-call state
+            this.overlay?.setDockVisible(this.isInCall && newSettings.dockVisible && newSettings.enabled);
+
             window.postMessage(
               {
                 source: 'MEMECORD_CONTENT',
@@ -190,7 +339,7 @@ export class OverlayController {
             if (this.settings) {
               const next = !this.settings.dockVisible;
               saveSettings({ dockVisible: next });
-              this.overlay?.setDockVisible(next);
+              this.overlay?.setDockVisible(this.isInCall && next);
               sendResponse({ dockVisible: next });
             }
             return true;
@@ -205,6 +354,16 @@ export class OverlayController {
   public destroy() {
     if (this.isDestroyed) return;
     this.isDestroyed = true;
+
+    if (this.callCheckIntervalId) {
+      clearInterval(this.callCheckIntervalId);
+      this.callCheckIntervalId = null;
+    }
+
+    if (this.spaObserver) {
+      this.spaObserver.disconnect();
+      this.spaObserver = null;
+    }
 
     if (this.keydownHandler) {
       window.removeEventListener('keydown', this.keydownHandler, true);

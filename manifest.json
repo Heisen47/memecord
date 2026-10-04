@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "MemeMeet - Google Meet Gesture Memes",
-  "version": "1.0.0",
-  "description": "Trigger fun meme overlays in Google Meet with hand gestures.",
+  "name": "Memecord - Live Meeting Meme Camera Overlay",
+  "version": "1.2.0",
+  "description": "Trigger fun meme overlays on your live camera stream and screen in Google Meet, Discord, Zoom, Teams, Slack & FaceTime.",
   "icons": {
     "16": "icons/icon-16.png",
     "48": "icons/icon-48.png",
@@ -10,7 +10,7 @@
   },
   "action": {
     "default_popup": "popup/index.html",
-    "default_title": "MemeMeet Settings",
+    "default_title": "Memecord Settings",
     "default_icon": {
       "16": "icons/icon-16.png",
       "48": "icons/icon-48.png",
@@ -25,28 +25,38 @@
     "storage"
   ],
   "host_permissions": [
-    "https://meet.google.com/*",
+    "<all_urls>",
     "https://api.imgflip.com/*",
     "https://meme-api.com/*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://meet.google.com/*"],
+      "matches": [
+        "<all_urls>"
+      ],
       "js": ["content.js"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN",
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
+        "inject.js",
         "memes/*",
-        "models/*",
-        "mediapipe/wasm/*",
         "icons/*",
-        "test/index.html",
         "assets/*"
       ],
-      "matches": ["https://meet.google.com/*"]
+      "matches": ["<all_urls>"]
     }
   ]
 }
