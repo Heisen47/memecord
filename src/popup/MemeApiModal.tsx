@@ -1,10 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Search, X, RefreshCw, Sparkles, Flame } from 'lucide-react';
-import { GestureType } from '../shared/types';
 
 interface MemeApiModalProps {
-  gestureKey?: Exclude<GestureType, 'none'>;
-  gestureName: string;
   onSelect: (assetUrl: string, title: string) => void;
   onClose: () => void;
 }
@@ -22,7 +19,6 @@ interface RedditMeme {
 }
 
 export const MemeApiModal: React.FC<MemeApiModalProps> = ({
-  gestureName,
   onSelect,
   onClose
 }) => {
@@ -62,7 +58,6 @@ export const MemeApiModal: React.FC<MemeApiModalProps> = ({
       const res = await fetch('https://meme-api.com/gimme/20');
       const json = await res.json();
       if (json.memes) {
-        // filter image urls only
         const valid = json.memes.filter((m: any) =>
           m.url && (m.url.endsWith('.png') || m.url.endsWith('.jpg') || m.url.endsWith('.jpeg') || m.url.endsWith('.gif'))
         );
@@ -94,7 +89,7 @@ export const MemeApiModal: React.FC<MemeApiModalProps> = ({
           <div>
             <h2 className="api-modal-title">Online Meme Explorer</h2>
             <div className="api-modal-sub">
-              Binding to <strong>{gestureName}</strong>
+              Browse & pick trending memes to add to your toolbar
             </div>
           </div>
           <button className="api-modal-close" onClick={onClose}>
@@ -127,7 +122,7 @@ export const MemeApiModal: React.FC<MemeApiModalProps> = ({
               <Search size={13} className="api-search-icon" />
               <input
                 type="text"
-                placeholder="Search templates (e.g. Drake, Spider-Man)..."
+                placeholder="Search templates (e.g. Drake, Distracted Boyfriend)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 autoFocus

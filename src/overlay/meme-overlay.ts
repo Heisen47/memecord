@@ -1,97 +1,63 @@
-import { GestureType, MemeMapping, StateMachineStatus } from '../shared/types';
-import { DebugHUD } from './debug-hud';
+import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { FloatingDock } from './floating-dock';
 import { OVERLAY_CSS } from './overlay-styles';
+import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey } from '../shared/media-resolver';
+
+export interface MemeOverlayCallbacks {
+  onTriggerMeme?: (meme: MemeItem) => void;
+  onAddMeme?: (meme: MemeItem) => void;
+  onDeleteMeme?: (memeId: string) => void;
+}
 
 export class MemeOverlayManager {
   private root: HTMLElement | null = null;
   private currentMemeBox: HTMLElement | null = null;
   private currentToast: HTMLElement | null = null;
+  private currentModal: HTMLElement | null = null;
   private hideTimeoutId: any = null;
   private removeTimeoutId: any = null;
   private toastTimeoutId: any = null;
-  private debugHud: DebugHUD | null = null;
   private floatingDock: FloatingDock | null = null;
-  private memeConfig: MemeMapping;
-  private isDebugMode: boolean = false;
-  private onTriggerCallback?: (gesture: Exclude<GestureType, 'none'>) => void;
-  private onRetryCameraCallback?: () => void;
+  private settings: AppSettings;
+  private callbacks: MemeOverlayCallbacks;
 
-  constructor(
-    memeConfig: MemeMapping,
-    debugMode: boolean = false,
-    options?: {
-      onTriggerMeme?: (gesture: Exclude<GestureType, 'none'>) => void;
-      onRetryCamera?: () => void;
-    }
-  ) {
-    this.memeConfig = memeConfig;
-    this.isDebugMode = debugMode;
-    this.onTriggerCallback = options?.onTriggerMeme;
-    this.onRetryCameraCallback = options?.onRetryCamera;
+  constructor(settings: AppSettings, callbacks: MemeOverlayCallbacks = {}) {
+    this.settings = settings;
+    this.callbacks = callbacks;
 
     this.initRoot();
 
     if (this.root) {
-      this.debugHud = new DebugHUD(this.root);
-      this.debugHud.setVisible(debugMode);
-
-      this.floatingDock = new FloatingDock(this.root, {
-        onTriggerMeme: (gesture) => {
-          if (this.onTriggerCallback) {
-            this.onTriggerCallback(gesture);
-          } else {
-            this.showMeme(gesture);
-          }
+      this.floatingDock = new FloatingDock(this.root, this.settings.memes, {
+        onTriggerMeme: (meme) => {
+          this.callbacks.onTriggerMeme?.(meme);
+          this.showMeme(meme);
         },
-        onToggleHUD: () => {
-          this.isDebugMode = !this.isDebugMode;
-          this.debugHud?.setVisible(this.isDebugMode);
-          this.floatingDock?.setHUDActive(this.isDebugMode);
+        onAddMeme: () => {
+          this.openQuickAddModal();
         },
-        onRetryCamera: () => {
-          this.onRetryCameraCallback?.();
+        onDeleteMeme: (memeId) => {
+          const meme = this.settings.memes.find((m) => m.id === memeId);
+          this.callbacks.onDeleteMeme?.(memeId);
+          this.showToast(`🗑️ Removed "${meme?.name || 'Meme'}" from dock`);
         }
       });
-      this.floatingDock.setHUDActive(debugMode);
+
+      this.floatingDock.setVisible(this.settings.dockVisible && this.settings.enabled);
     }
   }
 
-  public updateConfig(memeConfig: MemeMapping, debugMode: boolean) {
-    this.memeConfig = memeConfig;
-    this.isDebugMode = debugMode;
-    if (this.debugHud) {
-      this.debugHud.setVisible(debugMode);
-    }
-    if (this.floatingDock) {
-      this.floatingDock.setHUDActive(debugMode);
-    }
+  public updateSettings(settings: AppSettings) {
+    this.settings = settings;
+    this.floatingDock?.updateMemes(settings.memes);
+    this.floatingDock?.setVisible(settings.dockVisible && settings.enabled);
   }
 
-  public setDockStatus(status: 'active' | 'pending' | 'error', text?: string) {
-    this.floatingDock?.setStatus(status, text);
+  public setDockVisible(visible: boolean) {
+    this.floatingDock?.setVisible(visible);
   }
 
-  public setInCall(inCall: boolean) {
-    this.floatingDock?.setVisible(inCall);
-    if (!inCall) {
-      this.debugHud?.setVisible(false);
-      if (this.currentToast) {
-        this.currentToast.remove();
-        this.currentToast = null;
-      }
-    } else if (this.isDebugMode) {
-      this.debugHud?.setVisible(true);
-    }
-  }
-
-  public updateDebugHUD(status: StateMachineStatus, diagnostics?: { cameraText?: string; handsCount?: number; fps?: number }) {
-    if (this.debugHud) {
-      this.debugHud.update(status, diagnostics);
-    }
-  }
-
-  public showToast(message: string, durationMs: number = 3500) {
+  public showToast(message: string, durationMs: number = 2500) {
     if (!this.root) return;
 
     if (this.currentToast) {
@@ -104,7 +70,7 @@ export class MemeOverlayManager {
     }
 
     const toast = document.createElement('div');
-    toast.className = 'mememeet-toast';
+    toast.className = 'memecord-toast';
     toast.innerHTML = `<span>✨</span><span>${message}</span>`;
     this.root.appendChild(toast);
     this.currentToast = toast;
@@ -117,24 +83,19 @@ export class MemeOverlayManager {
       toast.classList.remove('visible');
       toast.classList.add('hiding');
       setTimeout(() => {
-        if (toast.parentElement) {
-          toast.remove();
-        }
-        if (this.currentToast === toast) {
-          this.currentToast = null;
-        }
-      }, 400);
+        if (toast.parentElement) toast.remove();
+        if (this.currentToast === toast) this.currentToast = null;
+      }, 300);
     }, durationMs);
   }
 
-  public showMeme(gesture: Exclude<GestureType, 'none'>) {
-    const config = this.memeConfig[gesture];
-    if (!config || !this.root) {
-      console.warn(`[MemeMeet] No meme configuration found for gesture: ${gesture}`);
-      return;
+  public showMeme(meme: MemeItem) {
+    if (!this.root || !this.settings.enabled) return;
+
+    if (this.settings.soundEnabled) {
+      this.playTriggerSound();
     }
 
-    // Cancel any pending hide animations
     if (this.hideTimeoutId) {
       clearTimeout(this.hideTimeoutId);
       this.hideTimeoutId = null;
@@ -144,55 +105,76 @@ export class MemeOverlayManager {
       this.removeTimeoutId = null;
     }
 
-    // Remove existing meme if currently visible
     if (this.currentMemeBox) {
       this.currentMemeBox.remove();
       this.currentMemeBox = null;
     }
 
-    // Resolve URL for asset
-    let assetUrl = config.asset;
-    if (config.asset.startsWith('http://') || config.asset.startsWith('https://') || config.asset.startsWith('data:')) {
-      assetUrl = config.asset;
+    // Resolve asset URL (local extension web-accessible vs remote URL)
+    let assetUrl = meme.assetUrl;
+    if (assetUrl.startsWith('http://') || assetUrl.startsWith('https://') || assetUrl.startsWith('data:')) {
+      assetUrl = meme.assetUrl;
     } else if (typeof chrome !== 'undefined' && chrome.runtime?.id && chrome.runtime?.getURL) {
       try {
-        assetUrl = chrome.runtime.getURL(config.asset.replace(/^\//, ''));
+        assetUrl = chrome.runtime.getURL(meme.assetUrl.replace(/^\//, ''));
       } catch (err) {
-        console.warn('[MemeMeet] chrome.runtime.getURL failed, fallback to root path:', err);
-        assetUrl = config.asset.startsWith('/') ? config.asset : `/${config.asset}`;
+        assetUrl = meme.assetUrl.startsWith('/') ? meme.assetUrl : `/${meme.assetUrl}`;
       }
     } else {
-      assetUrl = config.asset.startsWith('/') ? config.asset : `/${config.asset}`;
+      assetUrl = meme.assetUrl.startsWith('/') ? meme.assetUrl : `/${meme.assetUrl}`;
     }
 
+    const positionClass = this.getPositionClass(this.settings.position || 'top-center');
     const box = document.createElement('div');
-    box.className = 'mememeet-meme-box';
+    box.className = `memecord-meme-box ${positionClass}`;
 
-    const img = document.createElement('img');
-    img.className = 'mememeet-meme-image';
-    img.src = assetUrl;
-    img.alt = config.title || gesture;
-    img.onerror = () => {
-      console.error(`[MemeMeet] Failed to load meme asset: ${assetUrl}`);
-    };
+    const isVideo = assetUrl.startsWith('data:video/') || assetUrl.endsWith('.mp4') || assetUrl.endsWith('.webm');
+
+    let mediaEl: HTMLElement;
+    if (isVideo) {
+      const video = document.createElement('video');
+      video.className = 'memecord-meme-image';
+      video.src = assetUrl;
+      video.autoplay = true;
+      video.loop = true;
+      video.muted = true;
+      (video as any).playsInline = true;
+      mediaEl = video;
+    } else {
+      const img = document.createElement('img');
+      img.className = 'memecord-meme-image';
+      (img as any).referrerPolicy = 'no-referrer';
+      img.src = assetUrl;
+      img.alt = meme.name;
+
+      // CSP or CORS fallback: If external image fails to load in page DOM, fetch via background proxy
+      img.onerror = async () => {
+        if (assetUrl.startsWith('http') && !assetUrl.startsWith('data:')) {
+          console.warn(`[Memecord] Direct image blocked by page CSP, converting via background proxy...`);
+          const dataUrl = await fetchAsDataUrl(assetUrl);
+          if (dataUrl && dataUrl.startsWith('data:')) {
+            img.src = dataUrl;
+          }
+        }
+      };
+      mediaEl = img;
+    }
 
     const title = document.createElement('div');
-    title.className = 'mememeet-meme-title';
-    title.textContent = `${config.emoji || '✨'} ${config.title || gesture.replace('_', ' ').toUpperCase()}`;
+    title.className = 'memecord-meme-title';
+    title.textContent = `${meme.emoji || '✨'} ${meme.name}`;
 
-    box.appendChild(img);
+    box.appendChild(mediaEl);
     box.appendChild(title);
     this.root.appendChild(box);
     this.currentMemeBox = box;
 
-    // Trigger appearance on next frame for smooth animation
     requestAnimationFrame(() => {
       box.classList.add('visible');
     });
 
-    const duration = config.duration || 2000;
+    const duration = meme.durationMs || this.settings.defaultDurationMs || 2500;
 
-    // Schedule dismissal
     this.hideTimeoutId = setTimeout(() => {
       box.classList.remove('visible');
       box.classList.add('hiding');
@@ -208,19 +190,213 @@ export class MemeOverlayManager {
     }, duration);
   }
 
+  public openQuickAddModal() {
+    if (!this.root) return;
+
+    if (this.currentModal) {
+      this.currentModal.remove();
+      this.currentModal = null;
+    }
+
+    const nextKey = assignDefaultHotkey(this.settings.memes.length);
+
+    const modal = document.createElement('div');
+    modal.className = 'memecord-quick-add-modal';
+    modal.innerHTML = `
+      <div class="memecord-modal-title">
+        <span>➕ Add Meme to Dock</span>
+        <button class="memecord-modal-close" id="memecord-modal-close-btn">&times;</button>
+      </div>
+
+      <div>
+        <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">
+          GIF / Image / Tenor / Giphy URL
+        </label>
+        <input type="url" class="memecord-input-field" id="memecord-add-url" placeholder="Paste Tenor, Giphy, or any GIF link..." autofocus />
+        <span id="memecord-url-status" style="font-size: 10px; color: #818cf8; margin-top: 3px; display: block;"></span>
+      </div>
+
+      <div style="display: flex; gap: 8px;">
+        <div style="flex: 1;">
+          <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">Meme Name</label>
+          <input type="text" class="memecord-input-field" id="memecord-add-name" placeholder="e.g. Happy Cat" />
+        </div>
+        <div style="width: 65px;">
+          <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">Emoji</label>
+          <input type="text" class="memecord-input-field" id="memecord-add-emoji" value="✨" maxlength="3" style="text-align: center;" />
+        </div>
+        <div style="width: 55px;">
+          <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">Key</label>
+          <input type="text" class="memecord-input-field" id="memecord-add-key" value="${nextKey}" maxlength="2" style="text-align: center;" />
+        </div>
+      </div>
+
+      <!-- Live Preview -->
+      <div class="memecord-preview-wrap" id="memecord-preview-wrap" style="display: none;">
+        <img class="memecord-preview-thumb" id="memecord-preview-thumb" src="" alt="preview" />
+        <div style="flex: 1; overflow: hidden;">
+          <div id="memecord-preview-name" style="font-weight: 700; font-size: 12px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">Preview</div>
+          <div style="font-size: 10px; color: #94a3b8;">Ready to bind to key [${nextKey}]</div>
+        </div>
+      </div>
+
+      <div class="memecord-modal-btn-row">
+        <button class="memecord-btn-secondary" id="memecord-add-cancel">Cancel</button>
+        <button class="memecord-btn-primary" id="memecord-add-submit">Add to Dock</button>
+      </div>
+    `;
+
+    this.root.appendChild(modal);
+    this.currentModal = modal;
+
+    const close = () => {
+      if (this.currentModal) {
+        this.currentModal.remove();
+        this.currentModal = null;
+      }
+    };
+
+    modal.querySelector('#memecord-modal-close-btn')?.addEventListener('click', close);
+    modal.querySelector('#memecord-add-cancel')?.addEventListener('click', close);
+
+    const urlInput = modal.querySelector('#memecord-add-url') as HTMLInputElement;
+    const nameInput = modal.querySelector('#memecord-add-name') as HTMLInputElement;
+    const emojiInput = modal.querySelector('#memecord-add-emoji') as HTMLInputElement;
+    const keyInput = modal.querySelector('#memecord-add-key') as HTMLInputElement;
+    const statusSpan = modal.querySelector('#memecord-url-status') as HTMLSpanElement;
+    const previewWrap = modal.querySelector('#memecord-preview-wrap') as HTMLElement;
+    const previewThumb = modal.querySelector('#memecord-preview-thumb') as HTMLImageElement;
+    const previewName = modal.querySelector('#memecord-preview-name') as HTMLElement;
+
+    // Auto resolve Tenor / Giphy on input or paste
+    let resolveTimeout: any = null;
+    let resolvedUrl: string = '';
+
+    const handleUrlChange = () => {
+      const raw = urlInput.value.trim();
+      if (!raw) {
+        previewWrap.style.display = 'none';
+        statusSpan.textContent = '';
+        return;
+      }
+
+      statusSpan.textContent = 'Resolving media link...';
+
+      if (resolveTimeout) clearTimeout(resolveTimeout);
+      resolveTimeout = setTimeout(async () => {
+        try {
+          const res = await resolveMediaUrl(raw);
+          resolvedUrl = res.url;
+
+          if (res.name && !nameInput.value) {
+            nameInput.value = res.name;
+          }
+          if (res.emoji && emojiInput.value === '✨') {
+            emojiInput.value = res.emoji;
+          }
+
+          statusSpan.textContent = '✓ Ready to add';
+          statusSpan.style.color = '#10b981';
+
+          previewThumb.src = resolvedUrl;
+          previewName.textContent = `${emojiInput.value} ${nameInput.value || 'Meme'}`;
+          previewWrap.style.display = 'flex';
+        } catch (err: any) {
+          statusSpan.textContent = err?.message || 'Invalid URL';
+          statusSpan.style.color = '#ef4444';
+        }
+      }, 250);
+    };
+
+    urlInput.addEventListener('input', handleUrlChange);
+    urlInput.addEventListener('paste', () => setTimeout(handleUrlChange, 10));
+
+    modal.querySelector('#memecord-add-submit')?.addEventListener('click', async () => {
+      const rawUrl = urlInput.value.trim();
+      if (!rawUrl) {
+        urlInput.focus();
+        urlInput.style.borderColor = '#ef4444';
+        return;
+      }
+
+      const submitBtn = modal.querySelector('#memecord-add-submit') as HTMLButtonElement;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Saving...';
+
+      try {
+        // Resolve media
+        const resolved = await resolveMediaUrl(rawUrl);
+        // Convert to base64 Data URL to guarantee 0 CSP blocks on Google Meet / Discord / Zoom
+        const dataUrl = await fetchAsDataUrl(resolved.url);
+
+        const name = nameInput.value.trim() || resolved.name || 'Custom Meme';
+        const emoji = emojiInput.value.trim() || '✨';
+        const hotkey = keyInput.value.trim() || nextKey;
+
+        const newMeme: MemeItem = {
+          id: `meme_${Date.now()}`,
+          name,
+          emoji,
+          assetUrl: dataUrl,
+          hotkey,
+          durationMs: this.settings.defaultDurationMs || 2500
+        };
+
+        close();
+        this.callbacks.onAddMeme?.(newMeme);
+        this.showToast(`Added "${name}" [Key ${hotkey}]!`);
+      } catch (err: any) {
+        statusSpan.textContent = `Error: ${err?.message || 'Failed to save'}`;
+        statusSpan.style.color = '#ef4444';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Add to Dock';
+      }
+    });
+  }
+
+  private playTriggerSound() {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(480, ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(960, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.11);
+    } catch (_) {}
+  }
+
+  private getPositionClass(position: MemeOverlayPosition): string {
+    switch (position) {
+      case 'center':
+        return 'pos-center';
+      case 'top-right':
+        return 'pos-top-right';
+      case 'bottom-right':
+        return 'pos-bottom-right';
+      case 'top-center':
+      default:
+        return 'pos-top-center';
+    }
+  }
+
   private initRoot() {
-    // Inject styles directly into document if not present
-    if (!document.getElementById('mememeet-injected-styles')) {
+    if (!document.getElementById('memecord-injected-styles')) {
       const styleEl = document.createElement('style');
-      styleEl.id = 'mememeet-injected-styles';
+      styleEl.id = 'memecord-injected-styles';
       styleEl.textContent = OVERLAY_CSS;
       (document.head || document.documentElement).appendChild(styleEl);
     }
 
-    let existing = document.getElementById('mememeet-overlay-root');
+    let existing = document.getElementById('memecord-overlay-root');
     if (!existing) {
       existing = document.createElement('div');
-      existing.id = 'mememeet-overlay-root';
+      existing.id = 'memecord-overlay-root';
       (document.body || document.documentElement).appendChild(existing);
     }
     this.root = existing;
@@ -236,9 +412,9 @@ export class MemeOverlayManager {
       this.floatingDock = null;
     }
 
-    if (this.debugHud) {
-      this.debugHud.destroy();
-      this.debugHud = null;
+    if (this.currentModal) {
+      this.currentModal.remove();
+      this.currentModal = null;
     }
 
     if (this.root && this.root.parentElement) {

@@ -1,51 +1,40 @@
 import React, { useEffect, useState } from 'react';
-import { getSettings, saveSettings } from '../shared/storage';
-import { AppSettings, CameraStatusInfo, GestureType, MemeItemConfig } from '../shared/types';
-import { DEFAULT_SETTINGS, GESTURE_DEFINITIONS, PRESET_MEMES } from '../shared/config';
+import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storage';
+import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
+import { DEFAULT_SETTINGS, PRESET_LIBRARY } from '../shared/config';
+import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey } from '../shared/media-resolver';
 import {
-  ShieldCheck,
-  ExternalLink,
-  Sparkles,
-  CheckCircle2,
-  ChevronDown,
-  ChevronUp,
-  Link as LinkIcon,
   Play,
-  Globe
+  Trash2,
+  Plus,
+  Globe,
+  CheckCircle2,
+  Volume2,
+  VolumeX,
+  Layout,
+  Clock,
+  Layers,
+  HelpCircle,
+  Loader2
 } from 'lucide-react';
 import { MemeApiModal } from './MemeApiModal';
 
 export const Popup: React.FC = () => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
-  const [cameraStatus, setCameraStatus] = useState<CameraStatusInfo>({
-    active: false,
-    permissionGranted: false
-  });
-  const [testedGesture, setTestedGesture] = useState<string | null>(null);
-  const [expandedGesture, setExpandedGesture] = useState<string | null>(null);
-  const [apiModalGesture, setApiModalGesture] = useState<{
-    key: Exclude<GestureType, 'none'>;
-    name: string;
-  } | null>(null);
+  const [testedMemeId, setTestedMemeId] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [showApiModal, setShowApiModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // New meme form state
+  const [newName, setNewName] = useState('');
+  const [newEmoji, setNewEmoji] = useState('✨');
+  const [newUrl, setNewUrl] = useState('');
+  const [newHotkey, setNewHotkey] = useState('');
+  const [urlStatus, setUrlStatus] = useState<string | null>(null);
 
   useEffect(() => {
-    // Load initial settings
     getSettings().then(setSettings);
-
-    // Query active Google Meet tab for camera status
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.query({ active: true, currentWindow: true }).then((tabs: chrome.tabs.Tab[]) => {
-        const tab = tabs[0];
-        if (tab?.id && tab.url?.includes('meet.google.com')) {
-          chrome.tabs.sendMessage(tab.id, { type: 'GET_CAMERA_STATUS' }, (res: any) => {
-            if (chrome.runtime.lastError) return;
-            if (res && res.status) {
-              setCameraStatus(res.status);
-            }
-          });
-        }
-      });
-    }
   }, []);
 
   const handleToggleEnabled = async () => {
@@ -53,116 +42,141 @@ export const Popup: React.FC = () => {
     setSettings(updated);
   };
 
-  const handleToggleDebug = async () => {
-    const updated = await saveSettings({ debugMode: !settings.debugMode });
+  const handleToggleDock = async () => {
+    const updated = await saveSettings({ dockVisible: !settings.dockVisible });
     setSettings(updated);
   };
 
-  const handleDurationChange = async (durationMs: number) => {
-    const updated = await saveSettings({ memeDurationMs: durationMs });
+  const handleToggleSound = async () => {
+    const updated = await saveSettings({ soundEnabled: !settings.soundEnabled });
     setSettings(updated);
   };
 
-  const handleCooldownChange = async (cooldownMs: number) => {
-    const updated = await saveSettings({ cooldownMs });
+  const handlePositionChange = async (position: MemeOverlayPosition) => {
+    const updated = await saveSettings({ position });
     setSettings(updated);
   };
 
-  const handleSelectPreset = async (gestureKey: Exclude<GestureType, 'none'>, presetId: string) => {
-    if (presetId === 'custom') {
-      setExpandedGesture(gestureKey);
-      return;
-    }
-
-    const preset = PRESET_MEMES.find((p) => p.id === presetId);
-    if (!preset) return;
-
-    const currentConfig = settings.memes[gestureKey] || DEFAULT_SETTINGS.memes[gestureKey];
-    const updatedMeme: MemeItemConfig = {
-      ...currentConfig,
-      asset: preset.asset,
-      title: preset.name,
-      emoji: preset.emoji
-    };
-
-    const updated = await saveSettings({
-      memes: {
-        ...settings.memes,
-        [gestureKey]: updatedMeme
-      }
-    });
+  const handleDurationChange = async (defaultDurationMs: number) => {
+    const updated = await saveSettings({ defaultDurationMs });
     setSettings(updated);
   };
 
-  const handleUpdateCustomMeme = async (
-    gestureKey: Exclude<GestureType, 'none'>,
-    updates: Partial<MemeItemConfig>
-  ) => {
-    const currentConfig = settings.memes[gestureKey] || DEFAULT_SETTINGS.memes[gestureKey];
-    const updatedMeme: MemeItemConfig = {
-      ...currentConfig,
-      ...updates
-    };
-
-    const updated = await saveSettings({
-      memes: {
-        ...settings.memes,
-        [gestureKey]: updatedMeme
-      }
-    });
-    setSettings(updated);
-  };
-
-  const handleSelectFromApi = async (url: string, title: string) => {
-    if (!apiModalGesture) return;
-    const key = apiModalGesture.key;
-    const currentConfig = settings.memes[key] || DEFAULT_SETTINGS.memes[key];
-    const updatedMeme: MemeItemConfig = {
-      ...currentConfig,
-      asset: url,
-      title: title,
-      emoji: '✨'
-    };
-
-    const updated = await saveSettings({
-      memes: {
-        ...settings.memes,
-        [key]: updatedMeme
-      }
-    });
-    setSettings(updated);
-    setApiModalGesture(null);
-  };
-
-  const handleTriggerTest = async (gesture: Exclude<GestureType, 'none'>) => {
-    setTestedGesture(gesture);
-    setTimeout(() => setTestedGesture(null), 1200);
+  const handleTriggerTest = async (meme: MemeItem) => {
+    setTestedMemeId(meme.id);
+    setTimeout(() => setTestedMemeId(null), 1200);
 
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
         chrome.tabs.sendMessage(tab.id, {
-          type: 'TRIGGER_MANUAL_MEME',
-          gesture
+          type: 'TRIGGER_MEME_ITEM',
+          meme
         });
       }
     }
   };
 
-  const handleOpenSandbox = () => {
-    if (typeof chrome !== 'undefined' && chrome.tabs) {
-      chrome.tabs.create({ url: chrome.runtime.getURL('test/index.html') });
-    } else {
-      window.open('/test/index.html', '_blank');
+  const handleDeleteMeme = async (memeId: string) => {
+    const updated = await removeMeme(memeId);
+    setSettings(updated);
+  };
+
+  const handleUrlInputChange = async (val: string) => {
+    setNewUrl(val);
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setUrlStatus(null);
+      return;
+    }
+
+    if (trimmed.includes('tenor.com') || trimmed.includes('giphy.com')) {
+      setUrlStatus('Resolving media link...');
+      try {
+        const resolved = await resolveMediaUrl(trimmed);
+        if (resolved.name && !newName) {
+          setNewName(resolved.name);
+        }
+        setUrlStatus('✓ Media link detected');
+      } catch (err: any) {
+        setUrlStatus(err?.message || 'Error resolving URL');
+      }
     }
   };
 
-  const resolveThumbUrl = (asset: string) => {
-    if (asset.startsWith('http') || asset.startsWith('data:')) return asset;
-    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL(asset.replace(/^\//, ''));
+  const handleAddCustomMeme = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const raw = newUrl.trim();
+    if (!raw) return;
+
+    setIsSaving(true);
+    setUrlStatus('Saving & optimizing GIF...');
+
+    try {
+      const resolved = await resolveMediaUrl(raw);
+      const dataUrl = await fetchAsDataUrl(resolved.url);
+
+      const hotkey = newHotkey.trim() || assignDefaultHotkey(settings.memes.length);
+      const meme: MemeItem = {
+        id: `meme_${Date.now()}`,
+        name: newName.trim() || resolved.name || 'Custom Meme',
+        emoji: newEmoji.trim() || '✨',
+        assetUrl: dataUrl,
+        hotkey,
+        durationMs: settings.defaultDurationMs
+      };
+
+      const updated = await addMeme(meme);
+      setSettings(updated);
+      setNewName('');
+      setNewUrl('');
+      setNewEmoji('✨');
+      setNewHotkey('');
+      setUrlStatus(null);
+      setShowAddForm(false);
+    } catch (err: any) {
+      setUrlStatus(`Failed: ${err?.message || 'Error saving meme'}`);
+    } finally {
+      setIsSaving(false);
     }
-    return asset.startsWith('/') ? asset : `/${asset}`;
+  };
+
+  const handleSelectPreset = async (preset: MemeItem) => {
+    const hotkey = assignDefaultHotkey(settings.memes.length);
+    // Convert to dataUrl for guaranteed CSP safety
+    const dataUrl = await fetchAsDataUrl(preset.assetUrl);
+    const meme: MemeItem = {
+      ...preset,
+      id: `meme_${Date.now()}`,
+      assetUrl: dataUrl,
+      hotkey
+    };
+    const updated = await addMeme(meme);
+    setSettings(updated);
+  };
+
+  const handleSelectFromApi = async (url: string, title: string) => {
+    const hotkey = assignDefaultHotkey(settings.memes.length);
+    const dataUrl = await fetchAsDataUrl(url);
+    const meme: MemeItem = {
+      id: `meme_${Date.now()}`,
+      name: title,
+      emoji: '🔥',
+      assetUrl: dataUrl,
+      hotkey,
+      durationMs: settings.defaultDurationMs
+    };
+    const updated = await addMeme(meme);
+    setSettings(updated);
+    setShowApiModal(false);
+  };
+
+  const resolveThumbUrl = (assetUrl: string) => {
+    if (assetUrl.startsWith('http') || assetUrl.startsWith('data:')) return assetUrl;
+    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+      return chrome.runtime.getURL(assetUrl.replace(/^\//, ''));
+    }
+    return assetUrl.startsWith('/') ? assetUrl : `/${assetUrl}`;
   };
 
   return (
@@ -170,22 +184,22 @@ export const Popup: React.FC = () => {
       {/* Header */}
       <header className="popup-header">
         <div className="brand-wrapper">
-          <div className="brand-logo">M</div>
+          <div className="brand-logo">🎭</div>
           <div>
-            <h1 className="brand-title">MemeMeet</h1>
+            <h1 className="brand-title">Memecord</h1>
           </div>
         </div>
         <div className={`status-badge ${settings.enabled ? 'active' : 'inactive'}`}>
           <span className={`status-dot ${settings.enabled ? 'pulse' : ''}`} />
-          {settings.enabled ? (cameraStatus.active ? 'Camera On' : 'Active') : 'Paused'}
+          {settings.enabled ? 'Active' : 'Paused'}
         </div>
       </header>
 
-      {/* Master Toggle Card */}
+      {/* Master Toggle */}
       <div className="master-card">
         <div className="toggle-label-group">
-          <span className="toggle-title">Enable Meme Mode</span>
-          <span className="toggle-sub">Detect hand gestures & overlay memes</span>
+          <span className="toggle-title">Enable Memecord</span>
+          <span className="toggle-sub">Hotkeys & on-screen overlay toolbar</span>
         </div>
         <label className="switch">
           <input
@@ -197,219 +211,258 @@ export const Popup: React.FC = () => {
         </label>
       </div>
 
-      {/* Gesture Mappings Customizer */}
-      <section>
-        <div className="section-header-row">
-          <div className="section-title">Custom Gesture Mappings ({GESTURE_DEFINITIONS.length})</div>
+      {/* Quick Settings Bar */}
+      <div className="settings-grid">
+        <div className="setting-card">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Layout size={12} /> Position
+          </label>
+          <select
+            value={settings.position}
+            onChange={(e) => handlePositionChange(e.target.value as MemeOverlayPosition)}
+          >
+            <option value="top-center">Top Center</option>
+            <option value="center">Center</option>
+            <option value="top-right">Top Right</option>
+            <option value="bottom-right">Bottom Right</option>
+          </select>
         </div>
-        <div className="mappings-list">
-          {GESTURE_DEFINITIONS.map((def) => {
-            const currentMeme = settings.memes[def.key] || DEFAULT_SETTINGS.memes[def.key];
-            const isJustTested = testedGesture === def.key;
-            const isExpanded = expandedGesture === def.key;
 
-            // Determine if current asset matches a preset
-            const matchingPreset = PRESET_MEMES.find((p) => p.asset === currentMeme.asset);
-            const selectValue = matchingPreset ? matchingPreset.id : 'custom';
+        <div className="setting-card">
+          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <Clock size={12} /> Duration
+          </label>
+          <select
+            value={settings.defaultDurationMs}
+            onChange={(e) => handleDurationChange(Number(e.target.value))}
+          >
+            <option value={1500}>1.5s</option>
+            <option value={2000}>2.0s</option>
+            <option value={2500}>2.5s</option>
+            <option value={3500}>3.5s</option>
+            <option value={5000}>5.0s</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Toggles Row */}
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className={`test-link-btn ${settings.dockVisible ? 'active' : ''}`}
+          style={{ flex: 1, padding: '7px 10px', fontSize: 11 }}
+          onClick={handleToggleDock}
+        >
+          <Layers size={13} />
+          {settings.dockVisible ? 'Dock: Visible' : 'Dock: Hidden'}
+        </button>
+
+        <button
+          className="test-link-btn"
+          style={{ width: 'auto', padding: '7px 12px', fontSize: 11 }}
+          onClick={handleToggleSound}
+          title="Toggle Pop Sound FX"
+        >
+          {settings.soundEnabled ? <Volume2 size={13} color="#4ade80" /> : <VolumeX size={13} color="#94a3b8" />}
+        </button>
+      </div>
+
+      {/* Memes & Hotkeys List */}
+      <section>
+        <div className="section-header-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <div className="section-title" style={{ margin: 0 }}>
+            Memes & Hotkeys ({settings.memes.length})
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              className="test-btn"
+              style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4 }}
+              onClick={() => setShowApiModal(true)}
+              title="Search online memes"
+            >
+              <Globe size={11} /> Browse
+            </button>
+            <button
+              className="test-btn"
+              style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, background: '#6366f1', borderColor: '#818cf8', color: '#fff' }}
+              onClick={() => {
+                setShowAddForm(!showAddForm);
+                if (!showAddForm) {
+                  setNewHotkey(assignDefaultHotkey(settings.memes.length));
+                }
+              }}
+              title="Add custom meme"
+            >
+              <Plus size={11} /> Add
+            </button>
+          </div>
+        </div>
+
+        {/* Add Meme Form */}
+        {showAddForm && (
+          <form onSubmit={handleAddCustomMeme} style={{ background: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 10, marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 8, border: '1px solid rgba(99,102,241,0.3)' }}>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type="text"
+                placeholder="Name (e.g. Pop Cat)"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                style={{ flex: 1, padding: '6px 10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
+                required
+              />
+              <input
+                type="text"
+                placeholder="Emoji"
+                value={newEmoji}
+                onChange={(e) => setNewEmoji(e.target.value)}
+                maxLength={3}
+                style={{ width: 44, textAlign: 'center', padding: '6px 4px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
+              />
+              <input
+                type="text"
+                placeholder="Key"
+                value={newHotkey}
+                onChange={(e) => setNewHotkey(e.target.value)}
+                maxLength={2}
+                title="Hotkey number or letter (e.g. 1-9, 0, Q)"
+                style={{ width: 44, textAlign: 'center', padding: '6px 4px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
+              />
+            </div>
+            <input
+              type="url"
+              placeholder="Paste Tenor, Giphy, or image link..."
+              value={newUrl}
+              onChange={(e) => handleUrlInputChange(e.target.value)}
+              style={{ width: '100%', padding: '6px 10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
+              required
+            />
+            {urlStatus && (
+              <span style={{ fontSize: 11, color: urlStatus.startsWith('✓') ? '#4ade80' : '#818cf8' }}>
+                {urlStatus}
+              </span>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, marginTop: 4 }}>
+              <button
+                type="button"
+                onClick={() => setShowAddForm(false)}
+                disabled={isSaving}
+                style={{ padding: '5px 10px', background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#94a3b8', fontSize: 11, cursor: 'pointer' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSaving}
+                style={{ padding: '5px 12px', background: '#6366f1', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+              >
+                {isSaving && <Loader2 size={12} className="spin" />}
+                {isSaving ? 'Saving...' : 'Save Meme'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Memes List */}
+        <div className="mappings-list" style={{ maxHeight: 220, overflowY: 'auto' }}>
+          {settings.memes.map((meme, idx) => {
+            const isJustTested = testedMemeId === meme.id;
+            const hotkeyLabel = meme.hotkey || assignDefaultHotkey(idx);
 
             return (
-              <div key={def.key} className={`mapping-item ${isExpanded ? 'expanded' : ''}`}>
+              <div key={meme.id} className="mapping-item" style={{ padding: '8px 10px' }}>
                 <div className="mapping-item-main">
-                  <div className="mapping-info">
-                    <div className="mapping-emoji">{def.emoji}</div>
-                    <div>
-                      <div className="mapping-name">{def.name}</div>
-                      <div className="mapping-desc">{def.description}</div>
+                  <div className="mapping-info" style={{ gap: 8 }}>
+                    <img
+                      src={resolveThumbUrl(meme.assetUrl)}
+                      alt={meme.name}
+                      style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', background: '#1e293b' }}
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                    <div className="mapping-emoji" style={{ width: 28, height: 28, fontSize: 15 }}>
+                      {meme.emoji || '✨'}
+                    </div>
+                    <div style={{ maxWidth: 160 }}>
+                      <div className="mapping-name" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {meme.name}
+                      </div>
+                      <div className="mapping-desc" style={{ fontSize: 10, color: '#a5b4fc' }}>
+                        Hotkey: <strong style={{ color: '#fff' }}>[{hotkeyLabel}]</strong>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="mapping-actions">
+                  <div className="mapping-actions" style={{ gap: 4 }}>
                     <button
                       className="test-btn"
-                      onClick={() => handleTriggerTest(def.key)}
-                      title="Test trigger in Google Meet"
+                      onClick={() => handleTriggerTest(meme)}
+                      title={`Trigger ${meme.name} on current tab`}
                     >
-                      {isJustTested ? (
-                        <CheckCircle2 size={12} color="#4ade80" />
-                      ) : (
-                        <Play size={11} />
-                      )}
+                      {isJustTested ? <CheckCircle2 size={12} color="#4ade80" /> : <Play size={11} />}
                     </button>
-                    <button
-                      className="expand-btn"
-                      onClick={() => setExpandedGesture(isExpanded ? null : def.key)}
-                      title="Customize Meme"
-                    >
-                      {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                    </button>
+                    {settings.memes.length > 1 && (
+                      <button
+                        className="test-btn"
+                        style={{ color: '#ef4444', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                        onClick={() => handleDeleteMeme(meme.id)}
+                        title="Delete meme"
+                      >
+                        <Trash2 size={11} />
+                      </button>
+                    )}
                   </div>
                 </div>
-
-                {/* Preset Selector Row */}
-                <div className="mapping-selector-row">
-                  <span className="target-label">Meme:</span>
-                  <select
-                    className="meme-select"
-                    value={selectValue}
-                    onChange={(e) => handleSelectPreset(def.key, e.target.value)}
-                  >
-                    {PRESET_MEMES.map((preset) => (
-                      <option key={preset.id} value={preset.id}>
-                        {preset.emoji} {preset.name}
-                      </option>
-                    ))}
-                    <option value="custom">🌐 Custom URL / GIF...</option>
-                  </select>
-                </div>
-
-                {/* Collapsible Custom Editor */}
-                {isExpanded && (
-                  <div className="custom-editor">
-                    <div className="editor-group">
-                      <label>GIF / Image URL or Local Path</label>
-                      <div className="input-with-icon">
-                        <LinkIcon size={12} className="input-icon" />
-                        <input
-                          type="text"
-                          placeholder="https://... or memes/custom.gif"
-                          value={currentMeme.asset}
-                          onChange={(e) =>
-                            handleUpdateCustomMeme(def.key, { asset: e.target.value })
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div className="editor-row-dual">
-                      <div className="editor-group">
-                        <label>Overlay Title</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. Awesome!"
-                          value={currentMeme.title || ''}
-                          onChange={(e) =>
-                            handleUpdateCustomMeme(def.key, { title: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div className="editor-group emoji-group">
-                        <label>Emoji</label>
-                        <input
-                          type="text"
-                          maxLength={3}
-                          value={currentMeme.emoji || '✨'}
-                          onChange={(e) =>
-                            handleUpdateCustomMeme(def.key, { emoji: e.target.value })
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    {/* Preview Thumbnail */}
-                    <div className="preview-container">
-                      <span className="preview-label">Live Preview:</span>
-                      <div className="preview-bubble">
-                        <img
-                          src={resolveThumbUrl(currentMeme.asset)}
-                          alt="preview"
-                          className="preview-img"
-                          onError={(e) => {
-                            (e.target as HTMLElement).style.display = 'none';
-                          }}
-                          onLoad={(e) => {
-                            (e.target as HTMLElement).style.display = 'block';
-                          }}
-                        />
-                        <span className="preview-text">
-                          {currentMeme.emoji || '✨'} {currentMeme.title || def.name}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      className="api-browse-btn"
-                      onClick={() => setApiModalGesture({ key: def.key, name: def.name })}
-                    >
-                      <Globe size={13} />
-                      Browse Online Memes (API)
-                    </button>
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
       </section>
 
-      {/* Settings Grid */}
+      {/* Quick Preset Library */}
       <section>
-        <div className="section-title">Behavior Settings</div>
-        <div className="settings-grid">
-          <div className="setting-card">
-            <label htmlFor="duration-select">Meme Duration</label>
-            <select
-              id="duration-select"
-              value={settings.memeDurationMs}
-              onChange={(e) => handleDurationChange(Number(e.target.value))}
+        <div className="section-title" style={{ marginBottom: 6 }}>Popular Presets</div>
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+          {PRESET_LIBRARY.slice(9).map((preset) => (
+            <button
+              key={preset.id}
+              onClick={() => handleSelectPreset(preset)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.06)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 8,
+                padding: '4px 8px',
+                color: '#f8fafc',
+                fontSize: 11,
+                cursor: 'pointer',
+                whiteSpace: 'nowrap',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4
+              }}
+              title={`Add ${preset.name}`}
             >
-              <option value={1500}>1.5 seconds</option>
-              <option value={2000}>2.0 seconds</option>
-              <option value={3000}>3.0 seconds</option>
-              <option value={4000}>4.0 seconds</option>
-            </select>
-          </div>
-          <div className="setting-card">
-            <label htmlFor="cooldown-select">Anti-Spam Cooldown</label>
-            <select
-              id="cooldown-select"
-              value={settings.cooldownMs}
-              onChange={(e) => handleCooldownChange(Number(e.target.value))}
-            >
-              <option value={1500}>1.5 seconds</option>
-              <option value={2000}>2.0 seconds</option>
-              <option value={3000}>3.0 seconds</option>
-              <option value={5000}>5.0 seconds</option>
-            </select>
-          </div>
+              <span>{preset.emoji}</span>
+              <span>{preset.name}</span>
+              <Plus size={10} style={{ marginLeft: 2, opacity: 0.7 }} />
+            </button>
+          ))}
         </div>
       </section>
 
-      {/* Debug HUD Toggle */}
-      <div className="checkbox-row" onClick={handleToggleDebug}>
-        <span>Show Debug HUD on Meet</span>
-        <label className="switch" onClick={(e) => e.stopPropagation()}>
-          <input
-            type="checkbox"
-            checked={settings.debugMode}
-            onChange={handleToggleDebug}
-          />
-          <span className="slider" />
-        </label>
-      </div>
-
-      {/* Privacy Notice */}
-      <div className="privacy-box">
-        <ShieldCheck className="privacy-icon" size={16} />
-        <div>
-          <strong>Privacy First:</strong> Camera processed 100% locally on device. No video frames or images are ever uploaded.
+      {/* Universal Meeting Guide */}
+      <div className="privacy-box" style={{ borderColor: 'rgba(99, 102, 241, 0.25)', background: 'rgba(15, 23, 42, 0.6)' }}>
+        <HelpCircle className="privacy-icon" size={16} color="#818cf8" />
+        <div style={{ fontSize: 11 }}>
+          <strong>Global Meetings:</strong> Works on Google Meet, Discord, Zoom, Teams, Slack & FaceTime in Chrome.
+          Press <strong>1–9</strong> or click dock icons. Right-click or click <strong>✏️</strong> on dock to delete memes.
         </div>
       </div>
 
-      {/* Standalone Sandbox Button */}
-      <button className="test-link-btn" onClick={handleOpenSandbox}>
-        <Sparkles size={14} />
-        Open Gesture Test Lab / Sandbox
-        <ExternalLink size={12} />
-      </button>
-
       {/* Online Meme API Modal */}
-      {apiModalGesture && (
+      {showApiModal && (
         <MemeApiModal
-          gestureKey={apiModalGesture.key}
-          gestureName={apiModalGesture.name}
           onSelect={handleSelectFromApi}
-          onClose={() => setApiModalGesture(null)}
+          onClose={() => setShowApiModal(false)}
         />
       )}
     </div>

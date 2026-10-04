@@ -1,4 +1,4 @@
-import { AppSettings } from './types';
+import { AppSettings, MemeItem } from './types';
 import { DEFAULT_SETTINGS } from './config';
 
 const STORAGE_KEY = 'mememeet_settings';
@@ -12,18 +12,17 @@ export async function getSettings(): Promise<AppSettings> {
         return {
           ...DEFAULT_SETTINGS,
           ...data,
-          memes: {
-            ...DEFAULT_SETTINGS.memes,
-            ...(data.memes || {})
-          }
+          memes: Array.isArray(data.memes) && data.memes.length > 0 ? data.memes : DEFAULT_SETTINGS.memes
         };
       }
     } else if (typeof localStorage !== 'undefined') {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
+        const parsed = JSON.parse(raw);
         return {
           ...DEFAULT_SETTINGS,
-          ...JSON.parse(raw)
+          ...parsed,
+          memes: Array.isArray(parsed.memes) && parsed.memes.length > 0 ? parsed.memes : DEFAULT_SETTINGS.memes
         };
       }
     }
@@ -37,11 +36,7 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<AppS
   const current = await getSettings();
   const updated: AppSettings = {
     ...current,
-    ...settings,
-    memes: {
-      ...current.memes,
-      ...(settings.memes || {})
-    }
+    ...settings
   };
 
   try {
@@ -55,4 +50,23 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<AppS
   }
 
   return updated;
+}
+
+export async function addMeme(meme: MemeItem): Promise<AppSettings> {
+  const current = await getSettings();
+  const existingIndex = current.memes.findIndex((m) => m.id === meme.id);
+  let updatedMemes: MemeItem[];
+  if (existingIndex >= 0) {
+    updatedMemes = [...current.memes];
+    updatedMemes[existingIndex] = meme;
+  } else {
+    updatedMemes = [...current.memes, meme];
+  }
+  return saveSettings({ memes: updatedMemes });
+}
+
+export async function removeMeme(memeId: string): Promise<AppSettings> {
+  const current = await getSettings();
+  const updatedMemes = current.memes.filter((m) => m.id !== memeId);
+  return saveSettings({ memes: updatedMemes });
 }

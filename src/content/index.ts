@@ -1,23 +1,21 @@
-import { MeetController } from './meet-controller';
+import { OverlayController } from './overlay-controller';
 
 declare global {
   interface Window {
-    __MEMEMEET_INITIALIZED__?: boolean;
-    __MEMEMEET_CONTROLLER__?: MeetController;
+    __MEMECORD_INITIALIZED__?: boolean;
+    __MEMECORD_CONTROLLER__?: OverlayController;
   }
 }
 
 function initialize() {
-  if (window.__MEMEMEET_INITIALIZED__) {
-    console.log('[MemeMeet] Content script already initialized, skipping duplicate.');
+  if (window.__MEMECORD_INITIALIZED__) {
     return;
   }
 
-  window.__MEMEMEET_INITIALIZED__ = true;
-  const controller = new MeetController();
-  window.__MEMEMEET_CONTROLLER__ = controller;
+  window.__MEMECORD_INITIALIZED__ = true;
+  const controller = new OverlayController();
+  window.__MEMECORD_CONTROLLER__ = controller;
 
-  // Initialize once document is ready
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
       controller.init();

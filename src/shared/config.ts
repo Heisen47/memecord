@@ -1,106 +1,32 @@
-import { AppSettings, GestureType } from './types';
+import { AppSettings, MemeItem } from './types';
 
-export interface PresetMeme {
-  id: string;
-  name: string;
-  emoji: string;
-  asset: string;
-}
-
-export const PRESET_MEMES: PresetMeme[] = [
-  { id: 'cinema', name: 'Absolute Cinema', emoji: '🙌', asset: 'memes/absolute-cinema.gif' },
-  { id: 'noice', name: 'Noice (Michael Rosen)', emoji: '👌', asset: 'memes/noice.gif' },
-  { id: 'fist', name: 'Arthur Fist', emoji: '✊', asset: 'memes/fist.gif' },
-  { id: 'rock_on', name: 'Rock On / Headbang', emoji: '🤘', asset: 'memes/rock-on.gif' },
-  { id: 'pointing', name: 'Roll Safe / Big Brain', emoji: '☝️', asset: 'memes/pointing.gif' },
-  { id: 'perfection', name: 'Chef Kiss / Perfection', emoji: '✨', asset: 'memes/perfection.gif' },
-  { id: 'thumbs_up', name: 'Thumbs Up', emoji: '👍', asset: 'memes/thumbs-up.gif' },
-  { id: 'victory', name: 'Victory / Peace', emoji: '✌️', asset: 'memes/victory.gif' },
-  { id: 'stop', name: 'Open Palm Stop', emoji: '🖐', asset: 'memes/stop.gif' }
+export const DEFAULT_MEMES: MemeItem[] = [
+  { id: 'thumbs_up', name: 'Thumbs Up', emoji: '👍', assetUrl: 'memes/thumbs-up.gif', hotkey: '1', durationMs: 2500 },
+  { id: 'victory', name: 'Peace / Victory', emoji: '✌️', assetUrl: 'memes/victory.gif', hotkey: '2', durationMs: 2500 },
+  { id: 'stop', name: 'Wait / Hold Up', emoji: '🖐', assetUrl: 'memes/stop.gif', hotkey: '3', durationMs: 2500 },
+  { id: 'cinema', name: 'Absolute Cinema', emoji: '🙌', assetUrl: 'memes/absolute-cinema.gif', hotkey: '4', durationMs: 3000 },
+  { id: 'rock_on', name: 'Rock On / Headbang', emoji: '🤘', assetUrl: 'memes/rock-on.gif', hotkey: '5', durationMs: 2500 },
+  { id: 'pointing', name: 'Big Brain / Roll Safe', emoji: '☝️', assetUrl: 'memes/pointing.gif', hotkey: '6', durationMs: 2500 },
+  { id: 'noice', name: 'Noice (Michael Rosen)', emoji: '👌', assetUrl: 'memes/noice.gif', hotkey: '7', durationMs: 2200 },
+  { id: 'fist', name: 'Arthur Fist', emoji: '✊', assetUrl: 'memes/fist.gif', hotkey: '8', durationMs: 2500 },
+  { id: 'perfection', name: 'Chef Kiss / Perfection', emoji: '✨', assetUrl: 'memes/perfection.gif', hotkey: '9', durationMs: 2500 }
 ];
 
-export const GESTURE_DEFINITIONS: Array<{
-  key: Exclude<GestureType, 'none'>;
-  emoji: string;
-  name: string;
-  description: string;
-}> = [
-  { key: 'thumbs_up', emoji: '👍', name: 'Thumbs Up', description: 'Thumb up, 4 fingers curled' },
-  { key: 'victory', emoji: '✌️', name: 'Victory', description: 'Index & middle extended in V' },
-  { key: 'open_palm', emoji: '🖐', name: 'Open Palm', description: 'All 5 fingers extended & spread' },
-  { key: 'both_hands_up', emoji: '🙌', name: 'Both Hands Up', description: 'Both hands raised open' },
-  { key: 'rock_on', emoji: '🤘', name: 'Rock On', description: 'Index & pinky up, middle & ring curled' },
-  { key: 'pointing_up', emoji: '☝️', name: 'Pointing Up', description: 'Index pointing up, rest curled' },
-  { key: 'ok_sign', emoji: '👌', name: 'OK Sign', description: 'Thumb & index pinch, 3 fingers up' },
-  { key: 'fist', emoji: '✊', name: 'Fist', description: 'All fingers curled into fist' }
+export const PRESET_LIBRARY: MemeItem[] = [
+  ...DEFAULT_MEMES,
+  { id: 'cat_vibing', name: 'Cat Vibing', emoji: '🐱', assetUrl: 'https://media.giphy.com/media/jpbnoe3UIa8TU8LM13/giphy.gif' },
+  { id: 'popcat', name: 'Pop Cat', emoji: '😺', assetUrl: 'https://media.giphy.com/media/S604D5NhkhvHT8Rwja/giphy.gif' },
+  { id: 'this_is_fine', name: 'This Is Fine', emoji: '🔥', assetUrl: 'https://media.giphy.com/media/9M5jK4GXmD5o1irGrF/giphy.gif' },
+  { id: 'confused_travolta', name: 'Confused Travolta', emoji: '🤷', assetUrl: 'https://media.giphy.com/media/g01ZnwAUvutuK8GIQn/giphy.gif' },
+  { id: 'drake_yes', name: 'Drake Approves', emoji: '😎', assetUrl: 'https://media.giphy.com/media/wWue0rCDOphOE/giphy.gif' },
+  { id: 'leonardo_cheers', name: 'Gatsby Toast', emoji: '🥂', assetUrl: 'https://media.giphy.com/media/GCLlQnV7dXZ2E/giphy.gif' }
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {
   enabled: true,
-  debugMode: false,
-  memeDurationMs: 2000,
-  cooldownMs: 3000,
-  stabilityThresholdMs: 400,
-  fps: 15,
-  memes: {
-    thumbs_up: {
-      asset: 'memes/thumbs-up.gif',
-      duration: 2000,
-      title: 'Thumbs Up',
-      emoji: '👍'
-    },
-    victory: {
-      asset: 'memes/victory.gif',
-      duration: 2000,
-      title: 'Victory / Peace',
-      emoji: '✌️'
-    },
-    open_palm: {
-      asset: 'memes/stop.gif',
-      duration: 2000,
-      title: 'Open Palm Stop',
-      emoji: '🖐'
-    },
-    both_hands_up: {
-      asset: 'memes/absolute-cinema.gif',
-      duration: 2000,
-      title: 'Absolute Cinema',
-      emoji: '🙌'
-    },
-    rock_on: {
-      asset: 'memes/rock-on.gif',
-      duration: 2000,
-      title: 'Rock On Hype',
-      emoji: '🤘'
-    },
-    pointing_up: {
-      asset: 'memes/pointing.gif',
-      duration: 2000,
-      title: 'Big Brain',
-      emoji: '☝️'
-    },
-    ok_sign: {
-      asset: 'memes/noice.gif',
-      duration: 2000,
-      title: 'Noice!',
-      emoji: '👌'
-    },
-    fist: {
-      asset: 'memes/fist.gif',
-      duration: 2000,
-      title: 'Arthur Fist',
-      emoji: '✊'
-    }
-  }
-};
-
-export const KEYBOARD_GESTURE_MAP: Record<string, Exclude<GestureType, 'none'>> = {
-  '1': 'thumbs_up',
-  '2': 'victory',
-  '3': 'open_palm',
-  '4': 'both_hands_up',
-  '5': 'rock_on',
-  '6': 'pointing_up',
-  '7': 'ok_sign',
-  '8': 'fist'
+  dockVisible: true,
+  defaultDurationMs: 2500,
+  position: 'top-center',
+  soundEnabled: true,
+  memes: DEFAULT_MEMES
 };
