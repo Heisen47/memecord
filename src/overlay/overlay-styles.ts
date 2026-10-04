@@ -1,4 +1,5 @@
-/* MemeMeet Overlay Styles */
+export const OVERLAY_CSS = `
+/* MemeMeet Overlay Root */
 #mememeet-overlay-root {
   position: fixed;
   inset: 0;
@@ -288,3 +289,4 @@
   border-color: #8b5cf6;
   color: #c4b5fd;
 }
+`;

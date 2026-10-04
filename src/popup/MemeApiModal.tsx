@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Search, X, RefreshCw, Sparkles, Flame, Check } from 'lucide-react';
+import { Search, X, RefreshCw, Sparkles, Flame } from 'lucide-react';
 import { GestureType } from '../shared/types';
 
 interface MemeApiModalProps {
-  gestureKey: Exclude<GestureType, 'none'>;
+  gestureKey?: Exclude<GestureType, 'none'>;
   gestureName: string;
   onSelect: (assetUrl: string, title: string) => void;
   onClose: () => void;
@@ -22,7 +22,6 @@ interface RedditMeme {
 }
 
 export const MemeApiModal: React.FC<MemeApiModalProps> = ({
-  gestureKey,
   gestureName,
   onSelect,
   onClose

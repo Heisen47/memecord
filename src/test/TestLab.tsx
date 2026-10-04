@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { FilesetResolver, HandLandmarker, DrawingUtils } from '@mediapipe/tasks-vision';
-import { classifyHandPose, classifyHands } from '../gesture/classifier';
+import { classifyHands } from '../gesture/classifier';
 import { GestureStateMachine } from '../gesture/state-machine';
 import { MemeOverlayManager } from '../overlay/meme-overlay';
 import { DEFAULT_SETTINGS, KEYBOARD_GESTURE_MAP } from '../shared/config';

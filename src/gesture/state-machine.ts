@@ -12,6 +12,7 @@ export class GestureStateMachine {
   private state: GestureState = 'IDLE';
   private candidateGesture: GestureType = 'none';
   private detectingStartTime: number = 0;
+  private lastMatchingTime: number = 0;
   private cooldownStartTime: number = 0;
   private lastConfidence: number = 0;
 
@@ -24,7 +25,7 @@ export class GestureStateMachine {
   constructor(options: GestureStateMachineOptions) {
     this.stabilityThresholdMs = options.stabilityThresholdMs;
     this.cooldownDurationMs = options.cooldownDurationMs;
-    this.minConfidence = options.minConfidence ?? 0.65;
+    this.minConfidence = options.minConfidence ?? 0.60;
     this.onTrigger = options.onTrigger;
     this.onStatusChange = options.onStatusChange;
   }
@@ -54,12 +55,14 @@ export class GestureStateMachine {
           this.state = 'DETECTING';
           this.candidateGesture = gesture;
           this.detectingStartTime = now;
+          this.lastMatchingTime = now;
         }
         break;
       }
 
       case 'DETECTING': {
         if (gesture === this.candidateGesture && confidence >= this.minConfidence) {
+          this.lastMatchingTime = now;
           const heldDuration = now - this.detectingStartTime;
           if (heldDuration >= this.stabilityThresholdMs) {
             // CONFIRMED & TRIGGERED
@@ -78,11 +81,14 @@ export class GestureStateMachine {
             this.state = 'COOLDOWN';
             this.cooldownStartTime = now;
           }
+        } else if (now - this.lastMatchingTime < 180) {
+          // Grace period: allow up to 180ms of flicker/jitter without resetting
         } else {
-          // Gesture was lost or changed before reaching threshold
+          // Gesture was truly lost or changed before reaching threshold
           this.state = 'IDLE';
           this.candidateGesture = 'none';
           this.detectingStartTime = 0;
+          this.lastMatchingTime = 0;
         }
         break;
       }

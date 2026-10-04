@@ -1,9 +1,17 @@
 import { StateMachineStatus } from '../shared/types';
 
+export interface HudDiagnostics {
+  cameraText?: string;
+  handsCount?: number;
+  fps?: number;
+}
+
 export class DebugHUD {
   private element: HTMLElement | null = null;
   private isVisible: boolean = false;
 
+  private cameraEl: HTMLElement | null = null;
+  private handsEl: HTMLElement | null = null;
   private gestureEl: HTMLElement | null = null;
   private stateEl: HTMLElement | null = null;
   private confidenceEl: HTMLElement | null = null;
@@ -21,8 +29,16 @@ export class DebugHUD {
 
     hud.innerHTML = `
       <div class="mememeet-hud-header">
-        <span>MEMEMEET DEBUG</span>
+        <span>MEMEMEET DIAGNOSTICS</span>
         <span style="font-size: 9px; opacity: 0.7;">v1.0.0</span>
+      </div>
+      <div class="mememeet-hud-row">
+        <span class="mememeet-hud-label">Camera:</span>
+        <span class="mememeet-hud-value" data-hud="camera">INIT...</span>
+      </div>
+      <div class="mememeet-hud-row">
+        <span class="mememeet-hud-label">Hands Tracked:</span>
+        <span class="mememeet-hud-value" data-hud="hands">0</span>
       </div>
       <div class="mememeet-hud-row">
         <span class="mememeet-hud-label">State:</span>
@@ -44,13 +60,15 @@ export class DebugHUD {
         <div class="mememeet-hud-bar-fill" data-hud="bar"></div>
       </div>
       <div class="mememeet-hud-footer">
-        Keys: [1] Thumbs Up &bull; [2] Victory &bull; [3] Palm
+        Hold gesture 0.3s &bull; Keys: [1-8]
       </div>
     `;
 
     parent.appendChild(hud);
     this.element = hud;
 
+    this.cameraEl = hud.querySelector('[data-hud="camera"]');
+    this.handsEl = hud.querySelector('[data-hud="hands"]');
     this.stateEl = hud.querySelector('[data-hud="state"]');
     this.gestureEl = hud.querySelector('[data-hud="gesture"]');
     this.confidenceEl = hud.querySelector('[data-hud="confidence"]');
@@ -65,8 +83,22 @@ export class DebugHUD {
     }
   }
 
-  public update(status: StateMachineStatus) {
+  public update(status: StateMachineStatus, diagnostics?: HudDiagnostics) {
     if (!this.isVisible || !this.element) return;
+
+    if (diagnostics) {
+      if (diagnostics.cameraText && this.cameraEl) {
+        this.cameraEl.textContent = diagnostics.cameraText;
+      }
+      if (typeof diagnostics.handsCount === 'number' && this.handsEl) {
+        this.handsEl.textContent = `${diagnostics.handsCount}`;
+        if (diagnostics.handsCount > 0) {
+          this.handsEl.className = 'mememeet-hud-value active';
+        } else {
+          this.handsEl.className = 'mememeet-hud-value';
+        }
+      }
+    }
 
     if (this.stateEl) {
       this.stateEl.textContent = status.state;

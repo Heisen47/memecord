@@ -135,7 +135,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
         });
       }
       var response = await fetch(url, {
-        credentials: "same-origin"
+        credentials: "omit"
       });
       if (response.ok) {
         return response.arrayBuffer();
@@ -331,7 +331,7 @@ async function instantiateAsync(binary, binaryFile, imports) {
   if (!binary && !isFileURI(binaryFile) && !ENVIRONMENT_IS_NODE) {
     try {
       var response = fetch(binaryFile, {
-        credentials: "same-origin"
+        credentials: "omit"
       });
       var instantiationResult = await WebAssembly.instantiateStreaming(response, imports);
       return instantiationResult;
