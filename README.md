@@ -2,6 +2,16 @@
 
 > **Google Chrome Extension (Manifest V3)** for live meeting meme overlays and soundboard triggers across browser-based video calls.
 
+![Memecord in Action during a live video call](docs/images/memecord-in-action.png)
+
+---
+
+## 📸 Screenshots
+
+| In-Call Floating Deck & Live Camera Meme | Extension Settings & Hotkey Configuration |
+| :---: | :---: |
+| ![Live Camera Overlay](docs/images/memecord-in-action.png) | ![Extension Popup Settings](docs/images/memecord-popup.png) |
+
 ---
 
 ## ⚠️ Important Scope & Compatibility
