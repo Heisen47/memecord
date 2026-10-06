@@ -143,20 +143,22 @@ video.memecord-meme-image {
   box-shadow: 0 28px 70px -8px rgba(0, 0, 0, 0.9), 0 0 40px rgba(99, 102, 241, 0.32), inset 0 1px 1px rgba(255, 255, 255, 0.45);
 }
 
-.memecord-deck.hiding {
+.memecord-deck.hiding,
+.memecord-deck.shrinking {
   opacity: 0;
-  transform: translateX(-50%) scale(0.88);
+  transform: scale(0.18) translateY(24px) !important;
   pointer-events: none !important;
+  transition: transform 0.24s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
 }
 
 .memecord-deck.entering {
-  animation: memecord-spring-in 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: memecord-spring-in 0.28s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
 @keyframes memecord-spring-in {
-  0% { opacity: 0; transform: translateX(-50%) scale(0.88); }
-  70% { transform: translateX(-50%) scale(1.02); }
-  100% { opacity: 1; transform: translateX(-50%) scale(1); }
+  0% { opacity: 0; transform: scale(0.24); }
+  72% { transform: scale(1.02); }
+  100% { opacity: 1; transform: scale(1); }
 }
 
 /* Header Bar */
@@ -174,10 +176,25 @@ video.memecord-meme-image {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: grab;
+  cursor: pointer;
+  padding: 3px 6px;
+  border-radius: 8px;
+  transition: background 0.15s ease, transform 0.15s ease;
+  user-select: none;
+}
+.memecord-deck-brand:hover {
+  background: rgba(99, 102, 241, 0.16);
+}
+.memecord-deck-brand:hover .memecord-deck-title {
+  color: #c7d2fe;
+  text-shadow: 0 0 10px rgba(129, 140, 248, 0.5);
+}
+.memecord-deck-brand:hover .memecord-deck-logo-img {
+  transform: scale(1.12);
+  box-shadow: 0 0 12px rgba(99, 102, 241, 0.7);
 }
 .memecord-deck-brand:active {
-  cursor: grabbing;
+  transform: scale(0.96);
 }
 
 .memecord-drag-grip {
@@ -716,91 +733,114 @@ video.memecord-meme-image {
 }
 
 /* Minimized Mode Pebble with Logo */
+/* Facebook Messenger-style Floating Bubble */
 .memecord-summon-bubble {
   position: fixed;
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: rgba(13, 17, 30, 0.92);
-  backdrop-filter: blur(28px) saturate(210%);
-  -webkit-backdrop-filter: blur(28px) saturate(210%);
-  border: 1.5px solid rgba(129, 140, 248, 0.4);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.7), 0 0 25px rgba(99, 102, 241, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.3);
-  border-radius: 9999px;
-  padding: 5px 14px 5px 6px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  cursor: pointer;
-  pointer-events: auto !important;
-  color: #f8fafc;
-  font-size: 12px;
-  font-weight: 700;
-  z-index: 2147483646;
-  user-select: none;
-  transition: all 0.24s cubic-bezier(0.16, 1, 0.3, 1);
-  animation: memecord-summon-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.memecord-summon-bubble:hover {
-  background: rgba(18, 24, 44, 0.98);
-  border-color: rgba(129, 140, 248, 0.75);
-  transform: translateX(-50%) translateY(-3px) scale(1.05);
-  box-shadow: 0 22px 50px rgba(0, 0, 0, 0.8), 0 0 35px rgba(99, 102, 241, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.5);
-}
-
-.memecord-summon-bubble:active {
-  transform: translateX(-50%) scale(0.96);
-}
-
-@keyframes memecord-summon-in {
-  0% { opacity: 0; transform: translateX(-50%) scale(0.7); }
-  100% { opacity: 1; transform: translateX(-50%) scale(1); }
-}
-
-.memecord-summon-logo-wrap {
-  width: 32px;
-  height: 32px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98));
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  border: 2px solid rgba(129, 140, 248, 0.6);
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.75), 0 0 24px rgba(99, 102, 241, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.35);
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle, rgba(99, 102, 241, 0.3) 0%, rgba(0, 0, 0, 0.6) 100%);
-  border: 1.5px solid rgba(129, 140, 248, 0.55);
-  box-shadow: 0 0 14px rgba(99, 102, 241, 0.45);
-  overflow: hidden;
-  flex-shrink: 0;
+  cursor: pointer;
+  pointer-events: auto !important;
+  z-index: 2147483646;
+  user-select: none;
+  transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.2s ease;
+  animation: memecord-bubble-bounce-in 0.32s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-.memecord-summon-logo-img {
-  width: 100%;
-  height: 100%;
+.memecord-summon-bubble:hover {
+  transform: scale(1.12);
+  border-color: rgba(165, 180, 252, 0.95);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.85), 0 0 32px rgba(99, 102, 241, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+}
+
+.memecord-summon-bubble:active {
+  transform: scale(0.92);
+}
+
+.memecord-summon-bubble.popping-out {
+  animation: memecord-bubble-pop-out 0.18s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+.memecord-summon-bubble-logo {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   object-fit: cover;
-  display: block;
+  pointer-events: none;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.5));
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
-.memecord-summon-content {
+.memecord-summon-bubble:hover .memecord-summon-bubble-logo {
+  transform: scale(1.08);
+}
+
+.memecord-summon-bubble-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 4px;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border: 2px solid #0f172a;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 800;
   display: flex;
   align-items: center;
-  gap: 8px;
-}
-
-.memecord-summon-label {
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: -0.2px;
-  color: #f8fafc;
-}
-
-.memecord-summon-key {
-  font-size: 9px;
-  font-weight: 800;
-  color: #c7d2fe;
-  background: rgba(99, 102, 241, 0.3);
-  border: 1px solid rgba(129, 140, 248, 0.45);
-  border-radius: 6px;
-  padding: 2px 6px;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.memecord-summon-bubble-dot {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 1.5px solid #0f172a;
+  box-shadow: 0 0 8px #10b981;
+}
+
+@keyframes memecord-bubble-bounce-in {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  65% {
+    transform: scale(1.16);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes memecord-bubble-pop-out {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
 }
 
 /* Floating Rich Tooltip */

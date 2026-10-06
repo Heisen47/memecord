@@ -83,6 +83,7 @@ export class FloatingDock {
 
   // Dragging state
   private isDragging = false;
+  private bubbleDragged = false;
   private dragStartX = 0;
   private dragStartY = 0;
   private initialLeft = 0;
@@ -115,6 +116,7 @@ export class FloatingDock {
     // Brand and Drag
     const brand = document.createElement('div');
     brand.className = 'memecord-deck-brand';
+    brand.title = `Click logo or name to shrink into Messenger bubble (${getToggleShortcutFullLabel()})`;
 
     const dragGrip = document.createElement('span');
     dragGrip.className = 'memecord-drag-grip';
@@ -127,7 +129,7 @@ export class FloatingDock {
     const title = document.createElement('span');
     title.className = 'memecord-deck-title';
     title.textContent = 'Memecord Deck';
-    title.title = 'Memecord Chrome Extension • Works in Google Chrome tabs on video call websites (Google Meet, Discord Web, Zoom, Teams, Slack)';
+    title.title = `Click to shrink into Messenger bubble (${getToggleShortcutFullLabel()})`;
 
     const countBadge = document.createElement('span');
     countBadge.className = 'memecord-count-badge';
@@ -138,11 +140,13 @@ export class FloatingDock {
     logoImg.src = resolveThumbUrl('icons/logo.png');
     logoImg.className = 'memecord-deck-logo-img';
     logoImg.alt = 'Memecord';
-    logoImg.style.width = '20px';
-    logoImg.style.height = '20px';
-    logoImg.style.borderRadius = '50%';
-    logoImg.style.objectFit = 'cover';
-    logoImg.style.border = '1px solid rgba(255, 255, 255, 0.2)';
+    logoImg.title = `Click to shrink into Messenger bubble (${getToggleShortcutFullLabel()})`;
+
+    brand.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('.memecord-drag-grip')) return;
+      this.setMinimized(true);
+    });
 
     brand.appendChild(dragGrip);
     brand.appendChild(logoImg);
@@ -257,24 +261,20 @@ export class FloatingDock {
     parent.appendChild(deck);
     this.element = deck;
 
-    // 2. Minimized Summon Pebble with Logo & OS-Aware Shortcut
+    // 2. Facebook Messenger-Style Floating Chat Head Bubble with App Logo
     const bubble = document.createElement('div');
     bubble.className = 'memecord-summon-bubble';
-    bubble.title = `Memecord (${getToggleShortcutFullLabel()})`;
+    bubble.title = `Memecord Deck (${getToggleShortcutFullLabel()}) • Click to expand`;
     const logoUrl = resolveThumbUrl('icons/logo.png');
-    const shortcutLabel = getToggleShortcutText();
     bubble.innerHTML = `
-      <div class="memecord-summon-logo-wrap">
-        <img src="${logoUrl}" class="memecord-summon-logo-img" alt="Memecord Logo" />
-      </div>
-      <div class="memecord-summon-content">
-        <span class="memecord-summon-label">Memecord</span>
-        <span class="memecord-summon-key">${shortcutLabel}</span>
-      </div>
+      <img src="${logoUrl}" class="memecord-summon-bubble-logo" alt="Memecord Logo" />
+      <span class="memecord-summon-bubble-badge">${this.memes.length}</span>
+      <span class="memecord-summon-bubble-dot"></span>
     `;
     bubble.style.display = 'none';
     bubble.addEventListener('click', (e) => {
       e.stopPropagation();
+      if (this.bubbleDragged) return;
       this.setMinimized(false);
     });
     parent.appendChild(bubble);
@@ -288,6 +288,10 @@ export class FloatingDock {
     this.memes = memes;
     if (this.countBadge) {
       this.countBadge.textContent = `${memes.length}`;
+    }
+    const bubbleBadge = this.summonBubble?.querySelector('.memecord-summon-bubble-badge');
+    if (bubbleBadge) {
+      bubbleBadge.textContent = `${memes.length}`;
     }
     this.renderCards();
   }
@@ -602,32 +606,38 @@ export class FloatingDock {
 
     if (minimized) {
       this.closeActiveModal();
+      this.syncBubblePosition();
       if (this.element) {
-        this.element.classList.add('hiding');
+        this.element.classList.add('shrinking');
         setTimeout(() => {
           if (this.isMinimized && this.element) {
             this.element.style.display = 'none';
-            this.element.classList.remove('hiding');
+            this.element.classList.remove('shrinking');
           }
         }, 220);
       }
       if (this.summonBubble && this.isVisible) {
         this.summonBubble.style.display = 'flex';
+        this.summonBubble.classList.remove('popping-out');
         this.summonBubble.classList.add('visible');
-        this.syncBubblePosition();
       }
       this.callbacks.onCloseDock?.();
     } else {
       if (this.summonBubble) {
-        this.summonBubble.style.display = 'none';
-        this.summonBubble.classList.remove('visible');
+        this.summonBubble.classList.add('popping-out');
+        setTimeout(() => {
+          if (!this.isMinimized && this.summonBubble) {
+            this.summonBubble.style.display = 'none';
+            this.summonBubble.classList.remove('popping-out', 'visible');
+          }
+        }, 160);
       }
       if (this.element && this.isVisible) {
         this.element.style.display = 'flex';
         this.element.classList.add('entering');
         setTimeout(() => {
           this.element?.classList.remove('entering');
-        }, 250);
+        }, 280);
       }
     }
   }
@@ -640,8 +650,10 @@ export class FloatingDock {
     if (!this.summonBubble || !this.element) return;
     const rect = this.element.getBoundingClientRect();
     if (rect.left > 0 && rect.top > 0) {
-      this.summonBubble.style.left = `${Math.min(window.innerWidth - 180, rect.left)}px`;
-      this.summonBubble.style.top = `${Math.min(window.innerHeight - 50, rect.top)}px`;
+      const bubbleLeft = Math.max(12, Math.min(window.innerWidth - 70, rect.left + 16));
+      const bubbleTop = Math.max(12, Math.min(window.innerHeight - 70, rect.top));
+      this.summonBubble.style.left = `${bubbleLeft}px`;
+      this.summonBubble.style.top = `${bubbleTop}px`;
       this.summonBubble.style.bottom = 'auto';
       this.summonBubble.style.transform = 'none';
     }
@@ -745,6 +757,7 @@ export class FloatingDock {
         }
 
         this.isDragging = true;
+        this.bubbleDragged = false;
         this.activeDragTarget = targetEl;
         this.dragStartX = e.clientX;
         this.dragStartY = e.clientY;
@@ -762,6 +775,9 @@ export class FloatingDock {
         if (!this.isDragging || !this.activeDragTarget) return;
         const deltaX = e.clientX - this.dragStartX;
         const deltaY = e.clientY - this.dragStartY;
+        if (Math.hypot(deltaX, deltaY) > 5) {
+          this.bubbleDragged = true;
+        }
 
         let newLeft = this.initialLeft + deltaX;
         let newTop = this.initialTop + deltaY;
@@ -778,10 +794,17 @@ export class FloatingDock {
         this.activeDragTarget.style.transform = 'none';
 
         if (this.activeDragTarget === this.element && this.summonBubble) {
-          this.summonBubble.style.left = `${newLeft}px`;
+          this.summonBubble.style.left = `${newLeft + 16}px`;
           this.summonBubble.style.top = `${newTop}px`;
           this.summonBubble.style.bottom = 'auto';
           this.summonBubble.style.transform = 'none';
+        } else if (this.activeDragTarget === this.summonBubble && this.element) {
+          const maxDockLeft = window.innerWidth - this.element.offsetWidth - 10;
+          const dockLeft = Math.max(10, Math.min(maxDockLeft, newLeft - 16));
+          this.element.style.left = `${dockLeft}px`;
+          this.element.style.top = `${newTop}px`;
+          this.element.style.bottom = 'auto';
+          this.element.style.transform = 'none';
         }
       };
 
@@ -796,6 +819,11 @@ export class FloatingDock {
           try {
             localStorage.setItem('memecord_dock_pos', JSON.stringify({ left: rect.left, top: rect.top }));
           } catch (_) {}
+        }
+        if (this.bubbleDragged) {
+          setTimeout(() => {
+            this.bubbleDragged = false;
+          }, 80);
         }
         this.activeDragTarget = null;
       };

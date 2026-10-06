@@ -246,24 +246,141 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.22s ease;
+    }
+    .demo-dock.shrinking {
+      opacity: 0;
+      transform: scale(0.18) translateY(24px) !important;
+      pointer-events: none;
+    }
+    .demo-dock.entering {
+      animation: demo-dock-open 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    @keyframes demo-dock-open {
+      0% { opacity: 0; transform: scale(0.24); }
+      70% { transform: scale(1.03); }
+      100% { opacity: 1; transform: scale(1); }
     }
 
     .demo-dock-brand {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding-right: 10px;
+      padding: 4px 10px 4px 6px;
       border-right: 1px solid rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+      user-select: none;
+      border-radius: 10px;
+      transition: all 0.2s ease;
+    }
+    .demo-dock-brand:hover {
+      background: rgba(99, 102, 241, 0.2);
+    }
+    .demo-dock-brand:hover img {
+      transform: scale(1.12);
+      box-shadow: 0 0 12px rgba(99, 102, 241, 0.8);
+    }
+    .demo-dock-brand:hover .demo-dock-title {
+      color: #c7d2fe;
+      text-shadow: 0 0 10px rgba(129, 140, 248, 0.5);
+    }
+    .demo-dock-brand:active {
+      transform: scale(0.96);
     }
     .demo-dock-brand img {
       width: 26px;
       height: 26px;
-      border-radius: 6px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
     .demo-dock-title {
       font-size: 12px;
       font-weight: 800;
       color: #fff;
+      transition: color 0.2s ease;
+    }
+
+    /* Facebook Messenger Floating Chat Head Bubble */
+    .demo-chat-bubble {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.98));
+      backdrop-filter: blur(24px) saturate(200%);
+      border: 2px solid rgba(129, 140, 248, 0.6);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), 0 0 25px rgba(99, 102, 241, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      user-select: none;
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.22s ease, border-color 0.2s ease;
+      animation: demo-bubble-bounce 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+    .demo-chat-bubble:hover {
+      transform: scale(1.14);
+      border-color: rgba(165, 180, 252, 0.95);
+      box-shadow: 0 22px 48px rgba(0, 0, 0, 0.85), 0 0 35px rgba(99, 102, 241, 0.65), inset 0 1px 2px rgba(255, 255, 255, 0.5);
+    }
+    .demo-chat-bubble:active {
+      transform: scale(0.92);
+    }
+    .demo-chat-bubble.hiding {
+      animation: demo-bubble-hide 0.18s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    }
+    @keyframes demo-bubble-bounce {
+      0% { opacity: 0; transform: scale(0.2); }
+      65% { transform: scale(1.18); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+    @keyframes demo-bubble-hide {
+      0% { opacity: 1; transform: scale(1); }
+      100% { opacity: 0; transform: scale(0.2); }
+    }
+    .demo-chat-bubble-logo {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      object-fit: cover;
+      pointer-events: none;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.5));
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    .demo-chat-bubble:hover .demo-chat-bubble-logo {
+      transform: scale(1.08);
+    }
+    .demo-chat-bubble-badge {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      min-width: 19px;
+      height: 19px;
+      padding: 0 4px;
+      border-radius: 9999px;
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      border: 2px solid #0f172a;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+      font-family: ui-monospace, monospace;
+    }
+    .demo-chat-bubble-dot {
+      position: absolute;
+      bottom: 2px;
+      right: 2px;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #10b981;
+      border: 1.5px solid #0f172a;
+      box-shadow: 0 0 8px #10b981;
     }
 
     .demo-dock-items {
@@ -392,51 +509,58 @@
     </div>
 
     <!-- Floating Dock Overlay at bottom of call -->
-    <div class="demo-dock-wrap">
-      <div class="demo-dock">
-        <div class="demo-dock-brand">
+    <div class="demo-dock-wrap" id="demo-dock-wrap">
+      <div class="demo-dock" id="demo-dock">
+        <div class="demo-dock-brand" id="demo-dock-brand" title="Click logo or name to shrink into Messenger bubble (Alt + M)">
           <img src="/icons/logo.png" alt="Memecord Logo">
           <span class="demo-dock-title">Memecord Deck</span>
         </div>
 
-        <div class="demo-dock-items">
-          <div class="demo-dock-item">
+        <div class="demo-dock-items" id="demo-dock-items">
+          <div class="demo-dock-item" data-key="1" data-name="Thumbs Up" data-src="/memes/thumbs-up.gif" title="[1] Thumbs Up">
             <img src="/memes/thumbs-up.gif" alt="Thumbs Up">
             <span class="demo-dock-key">1</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="2" data-name="Peace" data-src="/memes/victory.gif" title="[2] Peace">
             <img src="/memes/victory.gif" alt="Peace">
             <span class="demo-dock-key">2</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="3" data-name="Wait" data-src="/memes/stop.gif" title="[3] Wait">
             <img src="/memes/stop.gif" alt="Wait">
             <span class="demo-dock-key">3</span>
           </div>
-          <div class="demo-dock-item active">
+          <div class="demo-dock-item active" data-key="4" data-name="Absolute Cinema" data-src="/memes/absolute-cinema.gif" title="[4] Absolute Cinema">
             <img src="/memes/absolute-cinema.gif" alt="Cinema">
             <span class="demo-dock-key">4</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="5" data-name="Rock On" data-src="/memes/rock-on.gif" title="[5] Rock On">
             <img src="/memes/rock-on.gif" alt="Rock On">
             <span class="demo-dock-key">5</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="6" data-name="Big Brain" data-src="/memes/pointing.gif" title="[6] Big Brain">
             <img src="/memes/pointing.gif" alt="Big Brain">
             <span class="demo-dock-key">6</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="7" data-name="Noice" data-src="/memes/noice.gif" title="[7] Noice">
             <img src="/memes/noice.gif" alt="Noice">
             <span class="demo-dock-key">7</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="8" data-name="Arthur Fist" data-src="/memes/fist.gif" title="[8] Arthur Fist">
             <img src="/memes/fist.gif" alt="Arthur Fist">
             <span class="demo-dock-key">8</span>
           </div>
-          <div class="demo-dock-item">
+          <div class="demo-dock-item" data-key="9" data-name="Perfection" data-src="/memes/perfection.gif" title="[9] Perfection">
             <img src="/memes/perfection.gif" alt="Perfection">
             <span class="demo-dock-key">9</span>
           </div>
         </div>
+      </div>
+
+      <!-- Facebook Messenger-style Floating Bubble with App Logo -->
+      <div class="demo-chat-bubble" id="demo-chat-bubble" title="Click to open Memecord Deck (Alt + M)" style="display: none;">
+        <img src="/icons/logo.png" class="demo-chat-bubble-logo" alt="Memecord Logo">
+        <span class="demo-chat-bubble-badge">9</span>
+        <span class="demo-chat-bubble-dot"></span>
       </div>
     </div>
 
@@ -456,5 +580,181 @@
     <button class="meet-ctrl-btn" title="Reactions">😊</button>
     <button class="meet-ctrl-btn leave" title="Leave Call">📞</button>
   </footer>
+
+  <script>
+    function playHapticSound(type) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        if (type === 'minimize') {
+          osc.frequency.setValueAtTime(460, t);
+          osc.frequency.exponentialRampToValueAtTime(200, t + 0.13);
+          gain.gain.setValueAtTime(0.08, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+          osc.start(t);
+          osc.stop(t + 0.14);
+        } else if (type === 'expand') {
+          osc.frequency.setValueAtTime(230, t);
+          osc.frequency.exponentialRampToValueAtTime(560, t + 0.13);
+          gain.gain.setValueAtTime(0.08, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.13);
+          osc.start(t);
+          osc.stop(t + 0.14);
+        } else if (type === 'pop') {
+          osc.frequency.setValueAtTime(320, t);
+          osc.frequency.exponentialRampToValueAtTime(680, t + 0.08);
+          gain.gain.setValueAtTime(0.06, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+          osc.start(t);
+          osc.stop(t + 0.09);
+        }
+      } catch (_) {}
+    }
+
+    const dock = document.getElementById('demo-dock');
+    const brand = document.getElementById('demo-dock-brand');
+    const bubble = document.getElementById('demo-chat-bubble');
+    const dockWrap = document.getElementById('demo-dock-wrap');
+    const memeOverlay = document.querySelector('.simulated-meme-overlay');
+    const memeGif = document.querySelector('.simulated-meme-gif');
+    const memeCaption = document.querySelector('.simulated-meme-caption');
+
+    let isMinimized = false;
+    let hasDragged = false;
+
+    function minimizeDock() {
+      if (isMinimized) return;
+      isMinimized = true;
+      playHapticSound('minimize');
+      dock.classList.add('shrinking');
+      setTimeout(() => {
+        if (isMinimized) {
+          dock.style.display = 'none';
+          dock.classList.remove('shrinking');
+          bubble.style.display = 'flex';
+          bubble.classList.remove('hiding');
+        }
+      }, 220);
+    }
+
+    function expandDock() {
+      if (!isMinimized) return;
+      isMinimized = false;
+      playHapticSound('expand');
+      bubble.classList.add('hiding');
+      setTimeout(() => {
+        if (!isMinimized) {
+          bubble.style.display = 'none';
+          bubble.classList.remove('hiding');
+          dock.style.display = 'flex';
+          dock.classList.add('entering');
+          setTimeout(() => {
+            dock.classList.remove('entering');
+          }, 280);
+        }
+      }, 160);
+    }
+
+    function toggleDock() {
+      if (isMinimized) {
+        expandDock();
+      } else {
+        minimizeDock();
+      }
+    }
+
+    brand.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hasDragged) return;
+      minimizeDock();
+    });
+
+    bubble.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (hasDragged) return;
+      expandDock();
+    });
+
+    // Keyboard Shortcuts (Alt + M and 1-9)
+    window.addEventListener('keydown', (e) => {
+      if (e.altKey && (e.key === 'm' || e.key === 'M')) {
+        e.preventDefault();
+        toggleDock();
+        return;
+      }
+
+      if (/^[1-9]$/.test(e.key)) {
+        const item = document.querySelector(`.demo-dock-item[data-key="${e.key}"]`);
+        if (item) {
+          triggerMeme(item);
+        }
+      }
+    });
+
+    function triggerMeme(item) {
+      document.querySelectorAll('.demo-dock-item').forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+      const name = item.dataset.name;
+      const src = item.dataset.src;
+      const key = item.dataset.key;
+      memeGif.src = src;
+      memeCaption.innerHTML = `<span>🙌 ${name}</span><span style="font-size: 10px; color: #a5b4fc; background: rgba(0,0,0,0.4); padding: 1px 6px; border-radius: 4px;">Key [${key}]</span>`;
+      memeOverlay.style.animation = 'none';
+      void memeOverlay.offsetWidth;
+      memeOverlay.style.animation = 'meme-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+      playHapticSound('pop');
+    }
+
+    document.querySelectorAll('.demo-dock-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerMeme(item);
+      });
+    });
+
+    // Dragging support for dockWrap
+    let isDragging = false;
+    let startX = 0, startY = 0;
+    let initLeft = 0, initTop = 0;
+
+    dockWrap.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.demo-dock-item') || e.target.closest('button')) return;
+      isDragging = true;
+      hasDragged = false;
+      startX = e.clientX;
+      startY = e.clientY;
+      const rect = dockWrap.getBoundingClientRect();
+      initLeft = rect.left;
+      initTop = rect.top;
+
+      const onMouseMove = (ev) => {
+        if (!isDragging) return;
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (Math.hypot(dx, dy) > 5) {
+          hasDragged = true;
+        }
+        dockWrap.style.left = (initLeft + dx + rect.width / 2) + 'px';
+        dockWrap.style.top = (initTop + dy) + 'px';
+        dockWrap.style.bottom = 'auto';
+      };
+
+      const onMouseUp = () => {
+        isDragging = false;
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+        setTimeout(() => { hasDragged = false; }, 60);
+      };
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
+  </script>
 </body>
 </html>
