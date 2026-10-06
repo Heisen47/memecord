@@ -512,8 +512,9 @@ export const Popup: React.FC = () => {
                           )}
                         </div>
                       ) : (
-                        <div className="mapping-desc" style={{ fontSize: 10, color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: 4 }}>
-                          Hotkey: <strong style={{ color: '#fff' }}>[{hotkeyLabel}]</strong>
+                        <div className="mapping-desc" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <span style={{ color: 'var(--text-muted)' }}>Hotkey:</span>
+                          <span className="hotkey-badge">{hotkeyLabel}</span>
                           <button
                             type="button"
                             onClick={() => {
@@ -572,24 +573,12 @@ export const Popup: React.FC = () => {
           {PRESET_LIBRARY.slice(9).map((preset) => (
             <button
               key={preset.id}
+              className="preset-chip"
               onClick={() => handleSelectPreset(preset)}
-              style={{
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                borderRadius: 8,
-                padding: '4px 8px',
-                color: '#f8fafc',
-                fontSize: 11,
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4
-              }}
               title={`Add ${preset.name}`}
             >
               <span>{preset.name}</span>
-              <Plus size={10} style={{ marginLeft: 2, opacity: 0.7 }} />
+              <Plus size={10} style={{ opacity: 0.7 }} />
             </button>
           ))}
         </div>
