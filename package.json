@@ -1,10 +1,11 @@
 {
-  "name": "mememeet",
-  "version": "1.0.0",
-  "description": "Chrome Extension for Google Meet Gesture-Controlled Memes",
+  "name": "memecord",
+  "version": "1.2.0",
+  "description": "Live Meeting Meme Camera Overlay for Google Meet, Discord, Zoom, Teams, Slack & FaceTime",
   "scripts": {
     "dev": "vite",
     "build": "node scripts/build.js",
+    "package": "node scripts/package.js",
     "preview": "vite preview"
   },
   "type": "module",
@@ -20,7 +21,6 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "typescript": "^7.0.2",
-    "vite": "^8.3.2",
-    "vite-plugin-static-copy": "^4.1.1"
+    "vite": "^8.3.2"
   }
 }

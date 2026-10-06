@@ -27,7 +27,7 @@ export async function getSettings(): Promise<AppSettings> {
       }
     }
   } catch (err) {
-    console.warn('[MemeMeet] Failed to read settings, using defaults:', err);
+    console.warn('[Memecord] Failed to read settings, using defaults:', err);
   }
   return DEFAULT_SETTINGS;
 }
@@ -46,7 +46,7 @@ export async function saveSettings(settings: Partial<AppSettings>): Promise<AppS
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     }
   } catch (err) {
-    console.error('[MemeMeet] Failed to save settings:', err);
+    console.error('[Memecord] Failed to save settings:', err);
   }
 
   return updated;

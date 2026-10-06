@@ -25,9 +25,7 @@
     "storage"
   ],
   "host_permissions": [
-    "<all_urls>",
-    "https://api.imgflip.com/*",
-    "https://meme-api.com/*"
+    "<all_urls>"
   ],
   "content_scripts": [
     {
@@ -51,7 +49,6 @@
       "resources": [
         "inject.js",
         "memes/*",
-        "icons/*",
         "assets/*"
       ],
       "matches": ["<all_urls>"]

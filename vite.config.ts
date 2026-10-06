@@ -10,7 +10,6 @@ export default defineConfig({
     rollupOptions: {
       input: {
         popup: resolve(import.meta.dirname, 'popup/index.html'),
-        test: resolve(import.meta.dirname, 'test/index.html'),
         background: resolve(import.meta.dirname, 'src/background/index.ts')
       },
       output: {

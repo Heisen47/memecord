@@ -2,7 +2,6 @@ import { MemeOverlayManager } from '../overlay/meme-overlay';
 import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storage';
 import { AppSettings, ExtensionMessage, MemeItem } from '../shared/types';
 import { assignDefaultHotkey } from '../shared/media-resolver';
-import '../overlay/overlay.css';
 
 export class OverlayController {
   private overlay: MemeOverlayManager | null = null;
