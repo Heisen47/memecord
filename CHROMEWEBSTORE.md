@@ -1,6 +1,6 @@
 # Chrome Web Store Publishing Guide & Listing — Memecord
 
-**Extension Name:** Memecord - Live Meeting Meme Camera Overlay  
+**Extension Name:** Memecord - Chrome Extension for Video Call Memes  
 **Version:** 1.2.0  
 **Target Category:** Fun / Productivity  
 
@@ -9,25 +9,35 @@
 ## 1. Store Listing Copy
 
 ### Short Description (max 132 chars)
-Trigger fun meme overlays on your live camera stream and screen in Google Meet, Discord, Zoom, Teams, Slack & FaceTime.
+Chrome extension to trigger meme overlays on your live camera feed & screen across video call websites in Chrome (Meet, Discord, Zoom).
 
 ### Detailed Description
-Elevate your online meetings and calls with hands-free, instant meme overlays visible directly on your webcam feed and screen!
+Bring humor and energy into your video calls with Memecord!
 
-Memecord integrates with Google Meet, Discord, Zoom, Microsoft Teams, Slack, and Apple FaceTime (web), injecting visual meme overlays onto your live camera stream so other participants in your meeting see the memes in real time.
+Memecord is a Google Chrome extension that lets you trigger on-screen memes, animated GIFs, and sound effects during browser-based video calls. Because Memecord composites directly onto your outgoing camera stream, other call participants see your memes in real-time with ZERO extension installed on their side!
+
+COMPATIBLE WEBSITES IN GOOGLE CHROME:
+- Google Meet (meet.google.com)
+- Discord Web (discord.com/app or discord.com/channels) — Use Discord in Chrome!
+- Zoom Web Client (zoom.us/wc/*)
+- Microsoft Teams Web (teams.microsoft.com)
+- Slack Calls & Huddles (slack.com)
+- FaceTime Web (facetime.apple.com)
+- WhatsApp Web (web.whatsapp.com)
+
+*Note: Memecord is a Chrome Extension designed exclusively for web video calls inside Google Chrome. It does not run inside standalone desktop applications.*
 
 KEY FEATURES:
-- 🎬 Live Camera Compositor: Injects meme GIFs/videos directly onto your webcam output so all call participants see them.
-- ⌨️ Instant Keyboard Hotkeys: Press 1–9, 0, or custom keys to trigger memes immediately without clicking away.
-- 🎛️ Interactive Floating Dock: On-screen toolbar to trigger, preview, minimize, and organize memes on any video platform.
-- 🖼️ Custom Meme Uploader: Add any Tenor, Giphy, Imgur, or direct GIF link with automatic CSP optimization.
-- 🔍 Built-in Online Meme Explorer: Search and pick from the top 100 meme templates (via Imgflip) or fresh trending memes directly inside the popup.
-- 🔊 Optional Sound FX: Play subtle audio pops on trigger.
-- 📐 Customizable Placement & Timing: Choose Top-Center, Center, Top-Right, or Bottom-Right with 1.5s to 5.0s durations.
-- 🔒 100% Private & Client-Side: Zero meeting data, audio, video frames, or user identities are collected or uploaded.
+- Remote Participants See It: Stamped cleanly onto your outgoing camera stream via in-page canvas compositing.
+- Works With or Without Camera: Detects calls even when camera is off or muted; triggers on-screen visuals and audio.
+- Instant Keyboard Hotkeys: Press 1–9, 0, or custom keys to trigger memes immediately.
+- Minimizable Floating Deck: Minimize to a subtle circular logo pebble or expand with Alt+M.
+- Persistent Library: Add your favorite GIFs/videos with custom hotkeys; saved automatically across sessions.
+- Built-in Online Meme Explorer: Search and pick from top templates (Imgflip & Meme-API) directly inside the popup.
+- 100% Private & Local: Video frames are composited client-side in memory. Zero video or audio is ever uploaded to any cloud server.
 
 HOW TO USE:
-1. Join any supported video call (Google Meet, Discord, Zoom, Teams, Slack, FaceTime).
+1. Join any supported video call in Google Chrome.
 2. Press 1 to 9 on your keyboard or click any meme icon in the on-screen Memecord toolbar.
 3. The meme appears over your camera and screen, auto-hiding after your set duration.
 4. Press Alt + M anytime to toggle the floating dock on or off.
@@ -38,8 +48,8 @@ HOW TO USE:
 
 | Permission | Justification |
 | :--- | :--- |
-| `storage` | Saves user preferences locally, including active meme bindings, hotkeys, overlay position, and sound FX toggle. |
-| `<all_urls>` (host_permission) | Required by the background service worker to fetch user-provided custom meme image/video URLs (from Tenor, Giphy, Imgur, etc.) and convert them to local Base64 Data URLs to avoid Content Security Policy (CSP) blocking inside meeting pages. |
+| `storage` | Saves user-configured memes, custom hotkey bindings, sound preferences, and HUD display state locally. |
+| Host permissions (`meet.google.com`, `discord.com`, etc.) | Required to inject the visual meme overlay onto supported web video calling platforms and composite outgoing webcam streams. |
 
 ---
 
@@ -54,11 +64,11 @@ HOW TO USE:
 ## 4. Step-by-Step Guide to Publish on Chrome Web Store
 
 ### Step 1: Build the Production Zip
-Run the following command in your terminal:
+Run the packaging command:
 ```bash
 bun run package
 ```
-This builds the production bundle and generates `memecord.zip` in your project root.
+This compiles the extension into `dist/` and creates `memecord-extension.zip` in your project root.
 
 ### Step 2: Register for a Chrome Web Store Developer Account
 1. Go to the [Chrome Web Store Developer Dashboard](https://chrome.google.com/webstore/devconsole).
@@ -67,28 +77,26 @@ This builds the production bundle and generates `memecord.zip` in your project r
 
 ### Step 3: Create a New Item
 1. In the Developer Dashboard, click **Add new item** (top-right).
-2. Drag and drop `memecord.zip` or click **Upload** to select it.
+2. Upload `memecord-extension.zip`.
 3. Wait for the zip to validate (manifest V3, icons, and permissions).
 
 ### Step 4: Fill in Store Listing Details
 1. **Store Listing Tab:**
-   - **Name:** `Memecord - Live Meeting Meme Camera Overlay`
+   - **Name:** `Memecord - Chrome Extension for Video Call Memes`
    - **Summary:** Copy from Section 1 (Short Description).
    - **Description:** Copy from Section 1 (Detailed Description).
    - **Category:** Select `Fun` or `Productivity`.
    - **Language:** English.
 2. **Graphic Assets:**
    - **Store Icon:** Upload `public/icons/icon-128.png` (128x128 PNG).
-   - **Screenshots:** Upload at least 1 screenshot (1280x800 px or 640x400 px) showing the extension popup and the meme overlay in action.
-   - **Small Promo Tile (Optional):** 440x280 px.
+   - **Screenshots:** Upload at least 1 screenshot (1280x800 px or 640x400 px) showing the extension in action.
 
 ### Step 5: Fill in the Privacy Tab
-1. **Single Purpose:** State that the extension's sole purpose is to overlay user-triggered meme graphics onto web camera feeds and meeting pages.
-2. **Permission Justification:** Copy justifications from Section 2 for `storage` and `<all_urls>`.
-3. **Data Usage:** Select that your extension **does NOT collect or transmit user data**.
-4. **Privacy Policy:** Link to a public privacy policy page (can be hosted on GitHub Pages or a public gist using the disclosure from Section 3).
+1. **Single Purpose:** State: *"Injects user-selected meme overlays into web camera feeds and meeting windows on supported video platforms."*
+2. **Permission Justification:** Copy justifications from Section 2.
+3. **Data Usage:** Select that your extension **does not collect or transmit user data**.
+4. **Privacy Policy:** Link to a public privacy policy page (e.g. GitHub Gist or repository page).
 
 ### Step 6: Submit for Review
 1. Click **Submit for review**.
-2. Select whether to publish automatically upon approval or manually.
-3. Standard Chrome Web Store review takes between **24 to 72 hours**.
+2. Reviews typically take between 24 and 72 hours.

@@ -1,5 +1,4 @@
-export const OVERLAY_CSS = `
-/* Memecord Overlay Root */
+/* Memecord Overlay Styles */
 #memecord-overlay-root {
   position: fixed;
   inset: 0;
@@ -12,7 +11,6 @@ export const OVERLAY_CSS = `
   user-select: none;
 }
 
-/* Meme Container Positions */
 .memecord-meme-box {
   position: absolute;
   pointer-events: none;
@@ -111,9 +109,7 @@ video.memecord-meme-image {
   box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
 }
 
-/* =========================================
-   Memecord Floating Deck (2D Grid Control Center)
-   ========================================= */
+/* Memecord Floating Deck (Spacious 2D Grid Control Center) */
 .memecord-deck {
   position: fixed;
   bottom: 24px;
@@ -803,7 +799,6 @@ video.memecord-meme-image {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
-/* Floating Rich Tooltip */
 .memecord-tooltip {
   position: absolute;
   bottom: 50px;
@@ -837,7 +832,6 @@ video.memecord-meme-image {
   transform: translateX(-50%) translateY(0);
 }
 
-/* Glassmorphic Context Menu */
 .memecord-context-menu {
   position: fixed;
   background: rgba(15, 23, 42, 0.95);
@@ -884,7 +878,6 @@ video.memecord-meme-image {
   color: #fca5a5;
 }
 
-/* Quick Add Glass Modal */
 .memecord-quick-add-modal {
   position: fixed;
   top: 50%;
@@ -1007,7 +1000,6 @@ video.memecord-meme-image {
   color: #fff;
 }
 
-/* Floating Toast */
 .memecord-toast {
   position: fixed;
   top: 24px;
@@ -1041,4 +1033,3 @@ video.memecord-meme-image {
   opacity: 0;
   transform: translateX(-50%) translateY(-15px);
 }
-`;

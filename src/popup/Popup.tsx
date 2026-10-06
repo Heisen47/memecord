@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storage';
+import { getSettings, saveSettings, addMeme, removeMeme, updateMemeHotkey, findClashingMeme } from '../shared/storage';
 import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { DEFAULT_SETTINGS, PRESET_LIBRARY } from '../shared/config';
-import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey } from '../shared/media-resolver';
+import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey, findFirstAvailableHotkey } from '../shared/media-resolver';
 import {
   Play,
   Trash2,
@@ -15,7 +15,10 @@ import {
   Clock,
   Layers,
   HelpCircle,
-  Loader2
+  Loader2,
+  Edit2,
+  Check,
+  X
 } from 'lucide-react';
 import { MemeApiModal } from './MemeApiModal';
 
@@ -28,10 +31,14 @@ export const Popup: React.FC = () => {
 
   // New meme form state
   const [newName, setNewName] = useState('');
-  const [newEmoji, setNewEmoji] = useState('✨');
   const [newUrl, setNewUrl] = useState('');
   const [newHotkey, setNewHotkey] = useState('');
   const [urlStatus, setUrlStatus] = useState<string | null>(null);
+
+  // Hotkey editing state
+  const [editingMemeId, setEditingMemeId] = useState<string | null>(null);
+  const [editKeyVal, setEditKeyVal] = useState<string>('');
+  const [editKeyError, setEditKeyError] = useState<string | null>(null);
 
   useEffect(() => {
     getSettings().then(setSettings);
@@ -109,19 +116,25 @@ export const Popup: React.FC = () => {
     const raw = newUrl.trim();
     if (!raw) return;
 
+    const hotkey = (newHotkey.trim() || findFirstAvailableHotkey(settings.memes)).toUpperCase();
+    const clash = findClashingMeme(settings.memes, hotkey);
+    if (clash) {
+      setUrlStatus(`⚠️ Key [${hotkey}] is already assigned to "${clash.name}". Change old one first.`);
+      return;
+    }
+
     setIsSaving(true);
     setUrlStatus('Saving & optimizing GIF...');
 
     try {
       const resolved = await resolveMediaUrl(raw);
-      const dataUrl = await fetchAsDataUrl(resolved.url);
+      const assetUrl = resolved.url;
 
-      const hotkey = newHotkey.trim() || assignDefaultHotkey(settings.memes.length);
       const meme: MemeItem = {
         id: `meme_${Date.now()}`,
         name: newName.trim() || resolved.name || 'Custom Meme',
-        emoji: newEmoji.trim() || '✨',
-        assetUrl: dataUrl,
+        emoji: '',
+        assetUrl,
         hotkey,
         durationMs: settings.defaultDurationMs
       };
@@ -130,7 +143,6 @@ export const Popup: React.FC = () => {
       setSettings(updated);
       setNewName('');
       setNewUrl('');
-      setNewEmoji('✨');
       setNewHotkey('');
       setUrlStatus(null);
       setShowAddForm(false);
@@ -142,7 +154,7 @@ export const Popup: React.FC = () => {
   };
 
   const handleSelectPreset = async (preset: MemeItem) => {
-    const hotkey = assignDefaultHotkey(settings.memes.length);
+    const hotkey = findFirstAvailableHotkey(settings.memes);
     // Convert to dataUrl for guaranteed CSP safety
     const dataUrl = await fetchAsDataUrl(preset.assetUrl);
     const meme: MemeItem = {
@@ -156,7 +168,7 @@ export const Popup: React.FC = () => {
   };
 
   const handleSelectFromApi = async (url: string, title: string) => {
-    const hotkey = assignDefaultHotkey(settings.memes.length);
+    const hotkey = findFirstAvailableHotkey(settings.memes);
     const dataUrl = await fetchAsDataUrl(url);
     const meme: MemeItem = {
       id: `meme_${Date.now()}`,
@@ -184,9 +196,14 @@ export const Popup: React.FC = () => {
       {/* Header */}
       <header className="popup-header">
         <div className="brand-wrapper">
-          <div className="brand-logo">🎭</div>
+          <div className="brand-logo" style={{ overflow: 'hidden', padding: 0 }}>
+            <img src="/icons/logo.png" alt="Memecord Logo" style={{ width: '100%', height: '100%', borderRadius: 8, objectFit: 'cover' }} />
+          </div>
           <div>
             <h1 className="brand-title">Memecord</h1>
+            <span style={{ fontSize: 10, color: '#94a3b8', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              Chrome Extension
+            </span>
           </div>
         </div>
         <div className={`status-badge ${settings.enabled ? 'active' : 'inactive'}`}>
@@ -194,6 +211,23 @@ export const Popup: React.FC = () => {
           {settings.enabled ? 'Active' : 'Paused'}
         </div>
       </header>
+
+      {/* Chrome Extension Scope Pill */}
+      <div style={{
+        background: 'rgba(99, 102, 241, 0.1)',
+        border: '1px solid rgba(129, 140, 248, 0.25)',
+        borderRadius: 8,
+        padding: '6px 10px',
+        marginBottom: 10,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        fontSize: 11,
+        color: '#cbd5e1'
+      }}>
+        <span>🌐</span>
+        <span><strong>Chrome Extension</strong> • Google Meet, Discord Web, Zoom, Teams</span>
+      </div>
 
       {/* Master Toggle */}
       <div className="master-card">
@@ -285,9 +319,11 @@ export const Popup: React.FC = () => {
               className="test-btn"
               style={{ padding: '4px 8px', borderRadius: 6, fontSize: 11, display: 'flex', alignItems: 'center', gap: 4, background: '#6366f1', borderColor: '#818cf8', color: '#fff' }}
               onClick={() => {
-                setShowAddForm(!showAddForm);
-                if (!showAddForm) {
-                  setNewHotkey(assignDefaultHotkey(settings.memes.length));
+                const nextOpen = !showAddForm;
+                setShowAddForm(nextOpen);
+                if (nextOpen) {
+                  setNewHotkey(findFirstAvailableHotkey(settings.memes));
+                  setUrlStatus(null);
                 }
               }}
               title="Add custom meme"
@@ -311,20 +347,31 @@ export const Popup: React.FC = () => {
               />
               <input
                 type="text"
-                placeholder="Emoji"
-                value={newEmoji}
-                onChange={(e) => setNewEmoji(e.target.value)}
-                maxLength={3}
-                style={{ width: 44, textAlign: 'center', padding: '6px 4px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
-              />
-              <input
-                type="text"
                 placeholder="Key"
                 value={newHotkey}
-                onChange={(e) => setNewHotkey(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase();
+                  setNewHotkey(val);
+                  const clash = findClashingMeme(settings.memes, val);
+                  if (clash) {
+                    setUrlStatus(`⚠️ Key [${val}] is assigned to "${clash.name}". Change old one first.`);
+                  } else if (urlStatus?.startsWith('⚠️ Key')) {
+                    setUrlStatus(null);
+                  }
+                }}
                 maxLength={2}
                 title="Hotkey number or letter (e.g. 1-9, 0, Q)"
-                style={{ width: 44, textAlign: 'center', padding: '6px 4px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
+                style={{
+                  width: 50,
+                  textAlign: 'center',
+                  padding: '6px 4px',
+                  background: newHotkey && findClashingMeme(settings.memes, newHotkey) ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0,0,0,0.3)',
+                  border: newHotkey && findClashingMeme(settings.memes, newHotkey) ? '1px solid #ef4444' : '1px solid rgba(255,255,255,0.15)',
+                  borderRadius: 6,
+                  color: newHotkey && findClashingMeme(settings.memes, newHotkey) ? '#ef4444' : '#fff',
+                  fontSize: 12,
+                  fontWeight: newHotkey && findClashingMeme(settings.memes, newHotkey) ? 700 : 400
+                }}
               />
             </div>
             <input
@@ -336,7 +383,7 @@ export const Popup: React.FC = () => {
               required
             />
             {urlStatus && (
-              <span style={{ fontSize: 11, color: urlStatus.startsWith('✓') ? '#4ade80' : '#818cf8' }}>
+              <span style={{ fontSize: 11, color: urlStatus.startsWith('✓') ? '#4ade80' : '#ef4444' }}>
                 {urlStatus}
               </span>
             )}
@@ -351,8 +398,20 @@ export const Popup: React.FC = () => {
               </button>
               <button
                 type="submit"
-                disabled={isSaving}
-                style={{ padding: '5px 12px', background: '#6366f1', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                disabled={isSaving || Boolean(newHotkey && findClashingMeme(settings.memes, newHotkey))}
+                style={{
+                  padding: '5px 12px',
+                  background: newHotkey && findClashingMeme(settings.memes, newHotkey) ? '#475569' : '#6366f1',
+                  border: 'none',
+                  borderRadius: 6,
+                  color: '#fff',
+                  fontWeight: 600,
+                  fontSize: 11,
+                  cursor: newHotkey && findClashingMeme(settings.memes, newHotkey) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5
+                }}
               >
                 {isSaving && <Loader2 size={12} className="spin" />}
                 {isSaving ? 'Saving...' : 'Save Meme'}
@@ -374,21 +433,109 @@ export const Popup: React.FC = () => {
                     <img
                       src={resolveThumbUrl(meme.assetUrl)}
                       alt={meme.name}
-                      style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover', background: '#1e293b' }}
+                      style={{ width: 34, height: 34, borderRadius: 8, objectFit: 'cover', background: '#1e293b' }}
                       onError={(e) => {
                         (e.target as HTMLElement).style.display = 'none';
                       }}
                     />
-                    <div className="mapping-emoji" style={{ width: 28, height: 28, fontSize: 15 }}>
-                      {meme.emoji || '✨'}
-                    </div>
-                    <div style={{ maxWidth: 160 }}>
+                    <div style={{ maxWidth: 170 }}>
                       <div className="mapping-name" style={{ fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {meme.name}
                       </div>
-                      <div className="mapping-desc" style={{ fontSize: 10, color: '#a5b4fc' }}>
-                        Hotkey: <strong style={{ color: '#fff' }}>[{hotkeyLabel}]</strong>
-                      </div>
+                      {editingMemeId === meme.id ? (
+                        <div style={{ marginTop: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <span style={{ fontSize: 10, color: '#a5b4fc' }}>Key:</span>
+                            <input
+                              type="text"
+                              value={editKeyVal}
+                              onChange={(e) => {
+                                const val = e.target.value.toUpperCase();
+                                setEditKeyVal(val);
+                                const clash = findClashingMeme(settings.memes, val, meme.id);
+                                if (clash) {
+                                  setEditKeyError(`Key [${val}] is assigned to "${clash.name}". Change old one first.`);
+                                } else {
+                                  setEditKeyError(null);
+                                }
+                              }}
+                              maxLength={2}
+                              style={{
+                                width: 32,
+                                height: 20,
+                                textAlign: 'center',
+                                padding: '2px 4px',
+                                background: editKeyError ? 'rgba(239, 68, 68, 0.25)' : 'rgba(0,0,0,0.4)',
+                                border: editKeyError ? '1px solid #ef4444' : '1px solid rgba(99,102,241,0.5)',
+                                borderRadius: 4,
+                                color: '#fff',
+                                fontSize: 11,
+                                fontWeight: 700
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              type="button"
+                              className="test-btn"
+                              disabled={Boolean(editKeyError) || !editKeyVal.trim()}
+                              onClick={async () => {
+                                if (editKeyError || !editKeyVal.trim()) return;
+                                try {
+                                  const updated = await updateMemeHotkey(meme.id, editKeyVal.trim());
+                                  setSettings(updated);
+                                  setEditingMemeId(null);
+                                  setEditKeyError(null);
+                                } catch (err: any) {
+                                  setEditKeyError(err?.message || 'Error updating key');
+                                }
+                              }}
+                              style={{ padding: '2px 5px', fontSize: 10, background: editKeyError ? 'rgba(255,255,255,0.05)' : '#6366f1', color: '#fff' }}
+                              title="Save key"
+                            >
+                              <Check size={10} />
+                            </button>
+                            <button
+                              type="button"
+                              className="test-btn"
+                              onClick={() => {
+                                setEditingMemeId(null);
+                                setEditKeyError(null);
+                              }}
+                              style={{ padding: '2px 5px', fontSize: 10 }}
+                              title="Cancel"
+                            >
+                              <X size={10} />
+                            </button>
+                          </div>
+                          {editKeyError && (
+                            <div style={{ fontSize: 9, color: '#ef4444', marginTop: 2 }}>{editKeyError}</div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="mapping-desc" style={{ fontSize: 10, color: '#a5b4fc', display: 'flex', alignItems: 'center', gap: 4 }}>
+                          Hotkey: <strong style={{ color: '#fff' }}>[{hotkeyLabel}]</strong>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingMemeId(meme.id);
+                              setEditKeyVal(meme.hotkey || assignDefaultHotkey(idx));
+                              setEditKeyError(null);
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#818cf8',
+                              cursor: 'pointer',
+                              padding: '0 2px',
+                              display: 'inline-flex',
+                              alignItems: 'center'
+                            }}
+                            title="Change keybinding"
+                          >
+                            <Edit2 size={10} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -441,7 +588,6 @@ export const Popup: React.FC = () => {
               }}
               title={`Add ${preset.name}`}
             >
-              <span>{preset.emoji}</span>
               <span>{preset.name}</span>
               <Plus size={10} style={{ marginLeft: 2, opacity: 0.7 }} />
             </button>

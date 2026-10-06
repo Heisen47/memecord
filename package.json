@@ -1,7 +1,7 @@
 {
   "name": "memecord",
   "version": "1.2.0",
-  "description": "Live Meeting Meme Camera Overlay for Google Meet, Discord, Zoom, Teams, Slack & FaceTime",
+  "description": "Memecord - Live Meeting Meme Camera Overlay & Soundboard",
   "scripts": {
     "dev": "vite",
     "build": "node scripts/build.js",

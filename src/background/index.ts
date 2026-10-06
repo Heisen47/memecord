@@ -4,9 +4,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   console.log('[Memecord] Extension installed/updated, reason:', details.reason);
 
   try {
-    const existing = await chrome.storage.local.get('mememeet_settings');
-    if (!existing || !existing.mememeet_settings) {
-      await chrome.storage.local.set({ mememeet_settings: DEFAULT_SETTINGS });
+    const existing = await chrome.storage.local.get(['memecord_settings', 'mememeet_settings']);
+    if (existing?.memecord_settings) {
+      console.log('[Memecord] Settings already present.');
+    } else if (existing?.mememeet_settings) {
+      await chrome.storage.local.set({ memecord_settings: existing.mememeet_settings });
+      await chrome.storage.local.remove('mememeet_settings');
+      console.log('[Memecord] Migrated legacy settings to memecord_settings.');
+    } else {
+      await chrome.storage.local.set({ memecord_settings: DEFAULT_SETTINGS });
       console.log('[Memecord] Default settings seeded.');
     }
   } catch (err) {

@@ -1,12 +1,16 @@
 import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { FloatingDock } from './floating-dock';
 import { OVERLAY_CSS } from './overlay-styles';
-import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey } from '../shared/media-resolver';
+import { resolveMediaUrl, fetchAsDataUrl, findFirstAvailableHotkey } from '../shared/media-resolver';
+import { saveSettings, updateMemeHotkey, findClashingMeme } from '../shared/storage';
+import { getToggleShortcutText } from '../shared/platform';
 
 export interface MemeOverlayCallbacks {
   onTriggerMeme?: (meme: MemeItem) => void;
   onAddMeme?: (meme: MemeItem) => void;
   onDeleteMeme?: (memeId: string) => void;
+  onUpdateHotkey?: (memeId: string, newHotkey: string) => void;
+  onCloseDock?: () => void;
 }
 
 export class MemeOverlayManager {
@@ -28,20 +32,42 @@ export class MemeOverlayManager {
     this.initRoot();
 
     if (this.root) {
-      this.floatingDock = new FloatingDock(this.root, this.settings.memes, {
-        onTriggerMeme: (meme) => {
-          this.callbacks.onTriggerMeme?.(meme);
-          this.showMeme(meme);
+      this.floatingDock = new FloatingDock(
+        this.root,
+        this.settings.memes,
+        {
+          onTriggerMeme: (meme) => {
+            this.callbacks.onTriggerMeme?.(meme);
+            this.showMeme(meme);
+          },
+          onAddMeme: () => {
+            this.openQuickAddModal();
+          },
+          onDeleteMeme: (memeId) => {
+            const meme = this.settings.memes.find((m) => m.id === memeId);
+            this.callbacks.onDeleteMeme?.(memeId);
+            this.showToast(`🗑️ Removed "${meme?.name || 'Meme'}" from deck`);
+          },
+          onUpdateHotkey: async (memeId, newHotkey) => {
+            const meme = this.settings.memes.find((m) => m.id === memeId);
+            const updated = await updateMemeHotkey(memeId, newHotkey);
+            this.settings = updated;
+            this.updateSettings(updated);
+            this.callbacks.onUpdateHotkey?.(memeId, newHotkey);
+            this.showToast(`⌨️ Rebound "${meme?.name || 'Meme'}" to Key [${newHotkey}]`);
+          },
+          onCloseDock: () => {
+            this.callbacks.onCloseDock?.();
+            this.showToast(`🎭 Deck Minimized • Press ${getToggleShortcutText()} or click pebble to reopen`);
+          },
+          onPositionChange: (pos) => {
+            this.settings.position = pos;
+            saveSettings({ position: pos });
+            this.showToast(`Overlay position: ${pos}`);
+          }
         },
-        onAddMeme: () => {
-          this.openQuickAddModal();
-        },
-        onDeleteMeme: (memeId) => {
-          const meme = this.settings.memes.find((m) => m.id === memeId);
-          this.callbacks.onDeleteMeme?.(memeId);
-          this.showToast(`🗑️ Removed "${meme?.name || 'Meme'}" from dock`);
-        }
-      });
+        this.settings.position
+      );
 
       this.floatingDock.setVisible(this.settings.dockVisible && this.settings.enabled);
     }
@@ -50,11 +76,16 @@ export class MemeOverlayManager {
   public updateSettings(settings: AppSettings) {
     this.settings = settings;
     this.floatingDock?.updateMemes(settings.memes);
+    this.floatingDock?.setPosition(settings.position);
     this.floatingDock?.setVisible(settings.dockVisible && settings.enabled);
   }
 
   public setDockVisible(visible: boolean) {
     this.floatingDock?.setVisible(visible);
+  }
+
+  public setDockMinimized(minimized: boolean) {
+    this.floatingDock?.setMinimized(minimized);
   }
 
   public showToast(message: string, durationMs: number = 2500) {
@@ -162,7 +193,7 @@ export class MemeOverlayManager {
 
     const title = document.createElement('div');
     title.className = 'memecord-meme-title';
-    title.textContent = `${meme.emoji || '✨'} ${meme.name}`;
+    title.textContent = meme.name;
 
     box.appendChild(mediaEl);
     box.appendChild(title);
@@ -198,7 +229,7 @@ export class MemeOverlayManager {
       this.currentModal = null;
     }
 
-    const nextKey = assignDefaultHotkey(this.settings.memes.length);
+    const nextKey = findFirstAvailableHotkey(this.settings.memes);
 
     const modal = document.createElement('div');
     modal.className = 'memecord-quick-add-modal';
@@ -221,11 +252,7 @@ export class MemeOverlayManager {
           <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">Meme Name</label>
           <input type="text" class="memecord-input-field" id="memecord-add-name" placeholder="e.g. Happy Cat" />
         </div>
-        <div style="width: 65px;">
-          <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">Emoji</label>
-          <input type="text" class="memecord-input-field" id="memecord-add-emoji" value="✨" maxlength="3" style="text-align: center;" />
-        </div>
-        <div style="width: 55px;">
+        <div style="width: 60px;">
           <label style="font-size: 11px; color: #94a3b8; display: block; margin-bottom: 5px;">Key</label>
           <input type="text" class="memecord-input-field" id="memecord-add-key" value="${nextKey}" maxlength="2" style="text-align: center;" />
         </div>
@@ -261,12 +288,42 @@ export class MemeOverlayManager {
 
     const urlInput = modal.querySelector('#memecord-add-url') as HTMLInputElement;
     const nameInput = modal.querySelector('#memecord-add-name') as HTMLInputElement;
-    const emojiInput = modal.querySelector('#memecord-add-emoji') as HTMLInputElement;
     const keyInput = modal.querySelector('#memecord-add-key') as HTMLInputElement;
     const statusSpan = modal.querySelector('#memecord-url-status') as HTMLSpanElement;
     const previewWrap = modal.querySelector('#memecord-preview-wrap') as HTMLElement;
     const previewThumb = modal.querySelector('#memecord-preview-thumb') as HTMLImageElement;
     const previewName = modal.querySelector('#memecord-preview-name') as HTMLElement;
+
+    // Hotkey validation & clash warning
+    const checkKeyClash = () => {
+      const candidateKey = keyInput.value.trim().toUpperCase();
+      keyInput.value = candidateKey;
+      if (!candidateKey) {
+        keyInput.style.borderColor = '#ef4444';
+        keyInput.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.4)';
+        statusSpan.textContent = '⚠️ Key cannot be empty';
+        statusSpan.style.color = '#ef4444';
+        return false;
+      }
+      const clash = findClashingMeme(this.settings.memes, candidateKey);
+      if (clash) {
+        keyInput.style.borderColor = '#ef4444';
+        keyInput.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.4)';
+        statusSpan.textContent = `⚠️ Key [${candidateKey}] is already assigned to "${clash.name}". Change old one first.`;
+        statusSpan.style.color = '#ef4444';
+        return false;
+      } else {
+        keyInput.style.borderColor = 'rgba(255, 255, 255, 0.15)';
+        keyInput.style.boxShadow = 'none';
+        if (statusSpan.textContent.startsWith('⚠️ Key')) {
+          statusSpan.textContent = `✓ Key [${candidateKey}] is available`;
+          statusSpan.style.color = '#10b981';
+        }
+        return true;
+      }
+    };
+
+    keyInput.addEventListener('input', checkKeyClash);
 
     // Auto resolve Tenor / Giphy on input or paste
     let resolveTimeout: any = null;
@@ -291,15 +348,12 @@ export class MemeOverlayManager {
           if (res.name && !nameInput.value) {
             nameInput.value = res.name;
           }
-          if (res.emoji && emojiInput.value === '✨') {
-            emojiInput.value = res.emoji;
-          }
 
           statusSpan.textContent = '✓ Ready to add';
           statusSpan.style.color = '#10b981';
 
           previewThumb.src = resolvedUrl;
-          previewName.textContent = `${emojiInput.value} ${nameInput.value || 'Meme'}`;
+          previewName.textContent = nameInput.value || 'Meme';
           previewWrap.style.display = 'flex';
         } catch (err: any) {
           statusSpan.textContent = err?.message || 'Invalid URL';
@@ -324,20 +378,32 @@ export class MemeOverlayManager {
       submitBtn.textContent = 'Saving...';
 
       try {
+        const hotkey = (keyInput.value.trim() || nextKey).toUpperCase();
+        const clash = findClashingMeme(this.settings.memes, hotkey);
+        if (clash) {
+          statusSpan.textContent = `⚠️ Key [${hotkey}] is already assigned to "${clash.name}". Change old one first.`;
+          statusSpan.style.color = '#ef4444';
+          keyInput.focus();
+          keyInput.style.borderColor = '#ef4444';
+          keyInput.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.4)';
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Add to Dock';
+          return;
+        }
+
         // Resolve media
         const resolved = await resolveMediaUrl(rawUrl);
-        // Convert to base64 Data URL to guarantee 0 CSP blocks on Google Meet / Discord / Zoom
-        const dataUrl = await fetchAsDataUrl(resolved.url);
+        // Store clean resolved URL (or data URL if local upload).
+        // Compositor & overlay convert to base64 on-the-fly at trigger time.
+        const assetUrl = resolved.url;
 
         const name = nameInput.value.trim() || resolved.name || 'Custom Meme';
-        const emoji = emojiInput.value.trim() || '✨';
-        const hotkey = keyInput.value.trim() || nextKey;
 
         const newMeme: MemeItem = {
           id: `meme_${Date.now()}`,
           name,
-          emoji,
-          assetUrl: dataUrl,
+          emoji: '',
+          assetUrl,
           hotkey,
           durationMs: this.settings.defaultDurationMs || 2500
         };
