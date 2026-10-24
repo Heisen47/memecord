@@ -111,8 +111,12 @@ export const TestLab: React.FC = () => {
 
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.source === 'MEMECORD_CAMERA' && event.data.type === 'MEME_DELIVERY') {
-        overlayRef.current?.setDelivery(event.data.mode);
-        addLog(`Meme reached the call (${event.data.mode === 'camera' ? 'on camera' : 'camera-off video'}).`);
+        overlayRef.current?.setDelivery(event.data.mode, event.data.reason);
+        addLog(
+          event.data.mode === 'none'
+            ? `Meme did NOT reach the call: ${event.data.reason}`
+            : `Meme reached the call (${event.data.mode === 'camera' ? 'on camera' : 'camera-off video'}).`
+        );
       }
     };
     window.addEventListener('message', handleMessage);

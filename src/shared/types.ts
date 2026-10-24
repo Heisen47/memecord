@@ -26,5 +26,6 @@ export type ExtensionMessage =
   | { type: 'TRIGGER_MEME'; memeId: string }
   | { type: 'TRIGGER_MEME_ITEM'; meme: MemeItem }
   | { type: 'TOGGLE_DOCK' }
+  | { type: 'GET_CALL_STATE' }
   | { type: 'GET_TRENDING_MEMES'; force?: boolean }
   | { type: 'SEARCH_GIPHY'; query: string };

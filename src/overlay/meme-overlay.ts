@@ -31,8 +31,8 @@ export class MemeOverlayManager {
   private settings: AppSettings;
   private callbacks: MemeOverlayCallbacks;
   private callMode: CallMode = 'local';
-  private badgeEl: HTMLElement | null = null;
   private captionEl: HTMLElement | null = null;
+  private delivered = false;
   private deliveryTimer: any = null;
   private audioCtx: AudioContext | null = null;
 
@@ -136,7 +136,13 @@ export class MemeOverlayManager {
     return Boolean(this.currentModal) || Boolean(this.floatingDock?.isModalOpen());
   }
 
-  public showToast(message: string, durationMs: number = 2500) {
+  /** Errors stay up longer and say exactly what went wrong */
+  public showError(message: string) {
+    console.error('[Memecord]', message);
+    this.showToast(message, 8000, 'error');
+  }
+
+  public showToast(message: string, durationMs: number = 2500, kind: 'info' | 'error' = 'info') {
     if (!this.root) return;
 
     this.currentToast?.remove();
@@ -146,8 +152,8 @@ export class MemeOverlayManager {
       this.toastTimeoutId = null;
     }
 
-    const toast = el('div', 'memecord-toast', message);
-    toast.setAttribute('role', 'status');
+    const toast = el('div', `memecord-toast${kind === 'error' ? ' error' : ''}`, message);
+    toast.setAttribute('role', kind === 'error' ? 'alert' : 'status');
     this.root.appendChild(toast);
     this.currentToast = toast;
 
@@ -189,19 +195,19 @@ export class MemeOverlayManager {
     const box = el('div', `memecord-meme-box ${this.getPositionClass(this.settings.position || 'top-center')}`);
     box.setAttribute('aria-live', 'polite');
 
-    const media = createMediaThumb(meme.assetUrl, meme.name, 'memecord-meme-image');
+    // Never leave a broken-image box on screen: if the media can't load, say so instead
+    const media = createMediaThumb(meme.assetUrl, meme.name, 'memecord-meme-image', (reason) => {
+      if (this.currentMemeBox === box) this.hideMeme();
+      this.showError(`Couldn't show "${meme.name}": ${reason}`);
+    });
 
-    const title = el('div', 'memecord-meme-title');
-    const badge = el('span', 'memecord-meme-badge local');
-    badge.appendChild(el('span', 'memecord-dot'));
-    badge.appendChild(el('span', '', 'Sending…'));
-    title.append(badge, el('span', '', meme.name));
+    const title = el('div', 'memecord-meme-title', meme.name);
 
+    // Only shown if the call didn't get the meme (see setDelivery)
     const caption = el('div', 'memecord-meme-caption');
     caption.style.display = 'none';
 
     box.append(media, title, caption);
-    this.badgeEl = badge;
     this.captionEl = caption;
 
     this.root.appendChild(box);
@@ -209,7 +215,15 @@ export class MemeOverlayManager {
     requestAnimationFrame(() => box.classList.add('visible'));
 
     // If the page script doesn't confirm delivery shortly, nobody on the call saw it
-    this.deliveryTimer = setTimeout(() => this.setDelivery('none'), 900);
+    this.delivered = false;
+    this.deliveryTimer = setTimeout(
+      () =>
+        this.setDelivery(
+          'none',
+          'no call connection was reported by this tab (reload the page if you just installed or updated Memecord)'
+        ),
+      1500
+    );
 
     this.hideTimeoutId = setTimeout(() => {
       box.classList.remove('visible');
@@ -221,21 +235,30 @@ export class MemeOverlayManager {
     }, duration);
   }
 
+  /** Removes any meme preview immediately (e.g. the call just ended) */
+  public hideMeme() {
+    if (this.hideTimeoutId) clearTimeout(this.hideTimeoutId);
+    if (this.removeTimeoutId) clearTimeout(this.removeTimeoutId);
+    if (this.deliveryTimer) clearTimeout(this.deliveryTimer);
+    this.hideTimeoutId = this.removeTimeoutId = this.deliveryTimer = null;
+    this.currentMemeBox?.remove();
+    this.currentMemeBox = null;
+  }
+
   /** Reported by the page script after each trigger: how (or whether) the call got the meme */
-  public setDelivery(mode: 'camera' | 'virtual' | 'none') {
+  public setDelivery(mode: 'camera' | 'virtual' | 'none', reason?: string) {
     if (this.deliveryTimer) {
       clearTimeout(this.deliveryTimer);
       this.deliveryTimer = null;
     }
-    if (!this.badgeEl || !this.currentMemeBox) return;
-    const label = this.badgeEl.lastElementChild as HTMLElement | null;
-    const sent = mode !== 'none';
-    this.badgeEl.className = `memecord-meme-badge ${sent ? 'live' : 'local'}`;
-    if (label) label.textContent = sent ? 'Everyone sees this' : 'Only you';
-    if (this.captionEl) {
-      this.captionEl.style.display = sent ? 'none' : '';
-      this.captionEl.textContent = 'Couldn\'t reach the call — turn your camera on so others see it';
-    }
+    if (!this.captionEl || !this.currentMemeBox) return;
+    // Silence is the success case; only warn when the call didn't receive the meme
+    if (mode !== 'none') this.delivered = true;
+    // A frame without the call can report "none" after the frame that has it reported success
+    if (mode === 'none' && this.delivered) return;
+    const missed = mode === 'none';
+    this.captionEl.style.display = missed ? '' : 'none';
+    this.captionEl.textContent = `Only you can see this — ${reason || "couldn't reach the call"}`;
   }
 
   /** Brief outline in the chosen spot so the position picker gives visible feedback */

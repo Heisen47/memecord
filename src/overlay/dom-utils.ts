@@ -1,4 +1,4 @@
-import { fetchAsDataUrl } from '../shared/media-resolver';
+import { fetchMediaDataUrl } from '../shared/media-resolver';
 
 // Lucide-style 24x24 stroke icons, kept inline so the HUD has no asset dependencies
 const ICON_PATHS = {
@@ -57,7 +57,12 @@ const PLACEHOLDER_THUMB =
  * Builds an <img>/<video> preview for a meme asset. Remote images blocked by the
  * call site's CSP are retried through the background proxy as a data URL.
  */
-export function createMediaThumb(assetUrl: string, alt: string, className?: string): HTMLImageElement | HTMLVideoElement {
+export function createMediaThumb(
+  assetUrl: string,
+  alt: string,
+  className?: string,
+  onFail?: (reason: string) => void
+): HTMLImageElement | HTMLVideoElement {
   const src = resolveAssetUrl(assetUrl);
 
   if (isVideoAsset(src)) {
@@ -67,6 +72,9 @@ export function createMediaThumb(assetUrl: string, alt: string, className?: stri
     video.loop = true;
     video.autoplay = true;
     video.playsInline = true;
+    if (onFail) {
+      video.onerror = () => onFail(`the video can't be played (${video.error?.message || 'unsupported format'})`);
+    }
     return video;
   }
 
@@ -75,16 +83,28 @@ export function createMediaThumb(assetUrl: string, alt: string, className?: stri
   img.decoding = 'async';
   img.referrerPolicy = 'no-referrer';
   let retried = false;
+  let proxyError = '';
   img.onerror = async () => {
+    // The page's CSP often blocks remote images: retry through the extension background
     if (!retried && src.startsWith('http')) {
       retried = true;
-      const dataUrl = await fetchAsDataUrl(src);
-      if (dataUrl.startsWith('data:')) {
-        img.src = dataUrl;
+      const res = await fetchMediaDataUrl(src);
+      if (res.dataUrl) {
+        img.src = res.dataUrl;
         return;
       }
+      proxyError = res.error || '';
     }
     img.onerror = null;
+    if (onFail) {
+      onFail(
+        proxyError ||
+          (src.startsWith('data:')
+            ? "the file is corrupted or isn't a supported image format"
+            : 'the page blocked the image and it could not be loaded another way')
+      );
+      return;
+    }
     img.src = PLACEHOLDER_THUMB;
   };
   img.src = src;

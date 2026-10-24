@@ -1,7 +1,7 @@
 import { MemeOverlayManager } from '../overlay/meme-overlay';
 import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storage';
 import { AppSettings, ExtensionMessage, MemeItem } from '../shared/types';
-import { assignDefaultHotkey, fetchAsDataUrl } from '../shared/media-resolver';
+import { assignDefaultHotkey, fetchMediaDataUrl } from '../shared/media-resolver';
 import { isToggleShortcutPressed, getToggleShortcutText } from '../shared/platform';
 
 export class OverlayController {
@@ -11,7 +11,6 @@ export class OverlayController {
   private isDestroyed: boolean = false;
   private isInCall: boolean = false;
   private isCameraStreaming: boolean = false;
-  private isAudioStreaming: boolean = false;
   private isWebRtcConnected: boolean = false;
   private callCheckIntervalId: any = null;
   private spaObserver: MutationObserver | null = null;
@@ -70,14 +69,19 @@ export class OverlayController {
     console.log('[Memecord] Call-sensitive Overlay Controller initialized (supports cam & no-cam calls).');
   }
 
-  public async triggerMeme(meme: MemeItem) {
-    if (!this.settings || !this.settings.enabled) return;
+  public async triggerMeme(meme: MemeItem): Promise<boolean> {
+    // Outside a call there is nothing to send memes to, so stay completely idle
+    if (!this.settings || !this.settings.enabled || !this.isInCall) return false;
 
-    // 1. Show local DOM overlay for immediate visual feedback
-    this.overlay?.showMeme(meme);
+    // Resolve to a base64 data URL first: it sidesteps page CSP and canvas tainting, and means the
+    // preview and the call video use exactly the same, already-loaded bytes.
+    const { dataUrl, error } = await fetchMediaDataUrl(meme.assetUrl);
+    if (!dataUrl) {
+      this.overlay?.showError(`Couldn't load "${meme.name}": ${error || 'unknown error'}`);
+      return false;
+    }
 
-    // 2. Convert to base64 Data URL to guarantee 0 CORS issues and 0 canvas tainting
-    const dataUrl = await fetchAsDataUrl(meme.assetUrl);
+    this.overlay?.showMeme({ ...meme, assetUrl: dataUrl });
 
     const message = {
       source: 'MEMECORD_CONTENT',
@@ -105,6 +109,7 @@ export class OverlayController {
         window.parent.postMessage(message, '*');
       } catch (_) {}
     }
+    return true;
   }
 
   private isTestLab(): boolean {
@@ -124,12 +129,8 @@ export class OverlayController {
       return true;
     }
 
-    // 2. Active if webcam or microphone stream is running in page
-    if (this.isCameraStreaming || this.isAudioStreaming) {
-      return true;
-    }
-
-    // 3. Active if WebRTC peer connection is actively connected
+    // 2. Active if a WebRTC peer connection is actually connected. A camera or mic stream on
+    //    its own isn't a call (lobby preview, device test, voice message recorder).
     if (this.isWebRtcConnected) {
       return true;
     }
@@ -239,6 +240,21 @@ export class OverlayController {
     return false;
   }
 
+  private checkTimerId: any = null;
+
+  /** DOM mutations come in bursts on call pages; evaluate at most a few times a second */
+  private scheduleCallCheck() {
+    if (this.checkTimerId) return;
+    this.checkTimerId = setTimeout(() => {
+      this.checkTimerId = null;
+      this.checkCallState();
+    }, 300);
+  }
+
+  public getCallState(): { inCall: boolean } {
+    return { inCall: this.isInCall };
+  }
+
   private checkCallState() {
     const inCall = this.isOngoingCall();
 
@@ -252,6 +268,7 @@ export class OverlayController {
       this.isInCall = false;
       console.log('[Memecord] Call ended / outside call -> hiding HUD');
       this.overlay?.setDockVisible(false);
+      this.overlay?.hideMeme();
     }
   }
 
@@ -261,7 +278,6 @@ export class OverlayController {
       if (event.data?.source === 'MEMECORD_CAMERA') {
         if (event.data.type === 'CALL_STREAM_STATE') {
           this.isCameraStreaming = Boolean(event.data.hasVideo);
-          this.isAudioStreaming = Boolean(event.data.hasAudio);
           this.overlay?.setCameraLive(this.isCameraStreaming);
           this.checkCallState();
         } else if (event.data.type === 'CAMERA_CALL_STATE') {
@@ -269,7 +285,10 @@ export class OverlayController {
           this.overlay?.setCameraLive(this.isCameraStreaming);
           this.checkCallState();
         } else if (event.data.type === 'MEME_DELIVERY') {
-          this.overlay?.setDelivery(event.data.mode === 'camera' || event.data.mode === 'virtual' ? event.data.mode : 'none');
+          this.overlay?.setDelivery(
+            event.data.mode === 'camera' || event.data.mode === 'virtual' ? event.data.mode : 'none',
+            typeof event.data.reason === 'string' ? event.data.reason : undefined
+          );
         } else if (event.data.type === 'WEBRTC_CALL_STATE') {
           this.isWebRtcConnected = Boolean(event.data.active);
           this.checkCallState();
@@ -284,7 +303,7 @@ export class OverlayController {
 
     // 3. DOM mutation observer for SPA navigation & call UI updates
     this.spaObserver = new MutationObserver(() => {
-      this.checkCallState();
+      this.scheduleCallCheck();
     });
 
     const target = document.body || document.documentElement;
@@ -388,18 +407,23 @@ export class OverlayController {
     if (typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
       chrome.runtime.onMessage.addListener(
         (message: ExtensionMessage, _sender, sendResponse: (res?: any) => void) => {
+          if (message.type === 'GET_CALL_STATE') {
+            sendResponse(this.getCallState());
+            return true;
+          }
+
           if (message.type === 'TRIGGER_MEME') {
             const meme = this.settings?.memes.find((m) => m.id === message.memeId);
             if (meme) {
-              this.triggerMeme(meme);
-              sendResponse({ success: true });
+              this.triggerMeme(meme).then((sent) => sendResponse({ success: sent, inCall: this.isInCall }));
+            } else {
+              sendResponse({ success: false, inCall: this.isInCall });
             }
             return true;
           }
 
           if (message.type === 'TRIGGER_MEME_ITEM') {
-            this.triggerMeme(message.meme);
-            sendResponse({ success: true });
+            this.triggerMeme(message.meme).then((sent) => sendResponse({ success: sent, inCall: this.isInCall }));
             return true;
           }
 
@@ -428,6 +452,10 @@ export class OverlayController {
     if (this.callCheckIntervalId) {
       clearInterval(this.callCheckIntervalId);
       this.callCheckIntervalId = null;
+    }
+    if (this.checkTimerId) {
+      clearTimeout(this.checkTimerId);
+      this.checkTimerId = null;
     }
 
     if (this.spaObserver) {

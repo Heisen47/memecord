@@ -1,6 +1,6 @@
 import { DEFAULT_SETTINGS } from '../shared/config';
 import { getSettings } from '../shared/storage';
-import { getCachedTrending, searchGiphyDirect } from '../shared/trending';
+import { getCachedTrending, searchGiphyDirect, MAX_MEDIA_BYTES } from '../shared/trending';
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log('[Memecord] Extension installed/updated, reason:', details.reason);
@@ -95,11 +95,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         const settings = await getSettings();
         const key = settings.giphyApiKey?.trim();
         if (!key) {
-          sendResponse({ success: true, memes: [] });
+          sendResponse({ success: true, result: null });
           return;
         }
-        const memes = await searchGiphyDirect(key, String(message.query || '').slice(0, 50));
-        sendResponse({ success: true, memes });
+        const result = await searchGiphyDirect(key, String(message.query || '').slice(0, 50));
+        sendResponse({ success: true, result });
       } catch (err: any) {
         sendResponse({ success: false, error: err?.message || 'GIPHY search failed' });
       }
@@ -110,26 +110,61 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   // Fetch external media and convert to Base64 Data URL to bypass webpage CSP
   if (message.type === 'FETCH_MEDIA_AS_DATA_URL') {
     (async () => {
+      const mediaUrl = String(message.url);
+      let host = mediaUrl;
       try {
-        const mediaUrl = message.url as string;
-        const response = await fetch(mediaUrl);
-        const blob = await response.blob();
-        const reader = new FileReader();
+        host = new URL(mediaUrl).hostname;
+      } catch (_) {}
+      const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
-        reader.onloadend = () => {
-          sendResponse({
-            success: true,
-            dataUrl: reader.result as string,
-            mimeType: blob.type
-          });
-        };
-        reader.onerror = () => {
-          sendResponse({ success: false, error: 'FileReader failed to convert blob' });
-        };
-        reader.readAsDataURL(blob);
+      try {
+        const response = await fetch(mediaUrl);
+        if (!response.ok) {
+          const hint =
+            response.status === 404 || response.status === 410
+              ? ' — the file was probably deleted'
+              : response.status === 403
+                ? /(^|\.)redd\.it$/.test(host)
+                  ? ' — Reddit returns this for images that were removed or deleted'
+                  : ' — the host refused the request'
+                : response.status === 429
+                  ? ' — the host is rate limiting; try again later'
+                  : '';
+          sendResponse({ success: false, error: `HTTP ${response.status} ${response.statusText} from ${host}${hint}`.replace('  ', ' ') });
+          return;
+        }
+        const declared = Number(response.headers.get('content-length') || 0);
+        if (declared > MAX_MEDIA_BYTES) {
+          sendResponse({ success: false, error: `file is ${mb(declared)}, over the ${mb(MAX_MEDIA_BYTES)} limit` });
+          return;
+        }
+        const blob = await response.blob();
+        if (blob.size > MAX_MEDIA_BYTES) {
+          sendResponse({ success: false, error: `file is ${mb(blob.size)}, over the ${mb(MAX_MEDIA_BYTES)} limit` });
+          return;
+        }
+        if (blob.type && !/^(image|video)\//.test(blob.type)) {
+          sendResponse({ success: false, error: `${host} returned ${blob.type || 'an unknown type'}, not an image or video` });
+          return;
+        }
+
+        // base64 by hand so this has no dependency on FileReader in the worker
+        const bytes = new Uint8Array(await blob.arrayBuffer());
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) {
+          binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+        }
+        sendResponse({
+          success: true,
+          dataUrl: `data:${blob.type || 'application/octet-stream'};base64,${btoa(binary)}`,
+          mimeType: blob.type
+        });
       } catch (err: any) {
         console.error('[Memecord] Failed to fetch media as data URL:', err);
-        sendResponse({ success: false, error: err?.message || 'Failed to fetch media' });
+        sendResponse({
+          success: false,
+          error: `network error reaching ${host} (${err?.message || 'request failed'})`
+        });
       }
     })();
     return true;

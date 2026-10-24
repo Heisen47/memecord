@@ -106,74 +106,70 @@ export async function resolveMediaUrl(rawUrl: string): Promise<ResolvedMedia> {
   return { url: trimmed, isVideo };
 }
 
-export async function fetchAsDataUrl(mediaUrl: string): Promise<string> {
-  // If already data URL, return immediately
-  if (mediaUrl.startsWith('data:')) {
-    return mediaUrl;
-  }
+export interface MediaLoadResult {
+  dataUrl?: string;
+  /** Plain-language reason when dataUrl is missing, shown to the user as-is */
+  error?: string;
+}
 
-  // Check in-memory cache
-  if (dataUrlCache.has(mediaUrl)) {
-    return dataUrlCache.get(mediaUrl)!;
-  }
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error || new Error('could not read the file'));
+    reader.readAsDataURL(blob);
+  });
+}
 
-  let fetchUrl = mediaUrl;
-  if (mediaUrl.startsWith('memes/') || mediaUrl.startsWith('/memes/')) {
-    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-      fetchUrl = chrome.runtime.getURL(mediaUrl.replace(/^\//, ''));
-    }
-  }
+/**
+ * Resolves any meme URL to a base64 data URL (no page CSP / CORS / canvas-tainting problems),
+ * or says exactly why it couldn't.
+ */
+export async function fetchMediaDataUrl(mediaUrl: string): Promise<MediaLoadResult> {
+  if (mediaUrl.startsWith('data:')) return { dataUrl: mediaUrl };
+  const cached = dataUrlCache.get(mediaUrl);
+  if (cached) return { dataUrl: cached };
 
-  // Outside the extension (Test Lab / dev server) bundled memes are plain site files
-  if ((typeof chrome === 'undefined' || !chrome.runtime?.id) && (mediaUrl.startsWith('memes/') || mediaUrl.startsWith('/memes/'))) {
+  const isBundled = mediaUrl.startsWith('memes/') || mediaUrl.startsWith('/memes/');
+  const inExtension = typeof chrome !== 'undefined' && Boolean(chrome.runtime?.id);
+
+  // Bundled meme: read from the extension package (or the site root in the Test Lab / dev server)
+  if (isBundled) {
+    const path = mediaUrl.replace(/^\//, '');
+    const url = inExtension && chrome.runtime.getURL ? chrome.runtime.getURL(path) : `/${path}`;
     try {
-      const blob = await (await fetch(`/${mediaUrl.replace(/^\//, '')}`)).blob();
-      return await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          dataUrlCache.set(mediaUrl, reader.result as string);
-          resolve(reader.result as string);
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
-      });
-    } catch (err) {
-      console.warn('[Memecord] Failed to read bundled meme:', err);
+      const resp = await fetch(url);
+      if (!resp.ok) return { error: `bundled file ${path} is missing (HTTP ${resp.status})` };
+      const dataUrl = await blobToDataUrl(await resp.blob());
+      dataUrlCache.set(mediaUrl, dataUrl);
+      return { dataUrl };
+    } catch (err: any) {
+      return { error: `couldn't read bundled file ${path}: ${err?.message || err}` };
     }
   }
 
-  // Local extension asset -> fetch directly and convert to base64 Data URL
-  if (fetchUrl.startsWith('chrome-extension://')) {
-    try {
-      const resp = await fetch(fetchUrl);
-      const blob = await resp.blob();
-      return new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const res = reader.result as string;
-          dataUrlCache.set(mediaUrl, res);
-          resolve(res);
-        };
-        reader.readAsDataURL(blob);
-      });
-    } catch (err) {
-      console.warn('[Memecord] Failed to read local asset as data URL:', err);
-    }
+  // Remote file: the background worker fetches it (it has host permissions and isn't bound by the page's CSP)
+  if (!inExtension) {
+    return { error: 'remote memes can only be loaded inside the installed extension' };
   }
-
-  // External web URL -> fetch via background proxy to bypass page CSP/CORS
   try {
-    const res = await chrome.runtime.sendMessage({
-      type: 'FETCH_MEDIA_AS_DATA_URL',
-      url: fetchUrl
-    });
-    if (res && res.success && res.dataUrl) {
+    const res = await chrome.runtime.sendMessage({ type: 'FETCH_MEDIA_AS_DATA_URL', url: mediaUrl });
+    if (res?.success && res.dataUrl) {
       dataUrlCache.set(mediaUrl, res.dataUrl);
-      return res.dataUrl;
+      return { dataUrl: res.dataUrl };
     }
-  } catch (err) {
-    console.warn('[Memecord] Failed to convert to data URL via background:', err);
+    return { error: res?.error || 'the extension returned no data' };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    if (/context invalidated|receiving end does not exist/i.test(msg)) {
+      return { error: 'the extension was reloaded or updated — refresh this tab and try again' };
+    }
+    return { error: `couldn't reach the extension background (${msg})` };
   }
+}
 
-  return mediaUrl;
+export async function fetchAsDataUrl(mediaUrl: string): Promise<string> {
+  const { dataUrl, error } = await fetchMediaDataUrl(mediaUrl);
+  if (!dataUrl && error) console.warn('[Memecord] Could not load media:', mediaUrl, '-', error);
+  return dataUrl || mediaUrl;
 }

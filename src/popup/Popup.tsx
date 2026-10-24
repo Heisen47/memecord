@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getSettings, saveSettings, addMeme, removeMeme, updateMemeHotkey, findClashingMeme } from '../shared/storage';
 import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { DEFAULT_SETTINGS, PRESET_LIBRARY } from '../shared/config';
+import { getGiphyUsage, describeGiphyUsage, UsageInfo } from '../shared/usage';
 import { resolveMediaUrl, fetchAsDataUrl, assignDefaultHotkey, findFirstAvailableHotkey } from '../shared/media-resolver';
 import {
   Play,
@@ -29,6 +30,8 @@ export const Popup: React.FC = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showApiModal, setShowApiModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  // 'unknown' until the active tab answers; 'unsupported' = no Memecord there (not a call site)
+  const [callState, setCallState] = useState<'unknown' | 'in-call' | 'idle' | 'unsupported'>('unknown');
 
   // New meme form state
   const [newName, setNewName] = useState('');
@@ -41,14 +44,43 @@ export const Popup: React.FC = () => {
   const [editKeyVal, setEditKeyVal] = useState<string>('');
   const [editKeyError, setEditKeyError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (typeof chrome === 'undefined' || !chrome.tabs) return;
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (!tab?.id) return;
+        const res = await chrome.tabs.sendMessage(tab.id, { type: 'GET_CALL_STATE' });
+        if (!cancelled) setCallState(res?.inCall ? 'in-call' : 'idle');
+      } catch (_) {
+        if (!cancelled) setCallState('unsupported');
+      }
+    };
+    poll();
+    const id = setInterval(poll, 1500);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
+
   // GIPHY key is kept as a draft until blur so we don't write storage on every keystroke
   const [giphyKeyDraft, setGiphyKeyDraft] = useState('');
+  const [giphyUsage, setGiphyUsage] = useState<UsageInfo | null>(null);
 
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setGiphyKeyDraft(s.giphyApiKey || '');
     });
+  }, []);
+
+  useEffect(() => {
+    const load = () => getGiphyUsage().then(setGiphyUsage).catch(() => {});
+    load();
+    const id = setInterval(load, 5000);
+    return () => clearInterval(id);
   }, []);
 
   const handleSaveGiphyKey = async () => {
@@ -94,10 +126,12 @@ export const Popup: React.FC = () => {
     if (typeof chrome !== 'undefined' && chrome.tabs) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.id) {
-        chrome.tabs.sendMessage(tab.id, {
-          type: 'TRIGGER_MEME_ITEM',
-          meme
-        });
+        chrome.tabs
+          .sendMessage(tab.id, {
+            type: 'TRIGGER_MEME_ITEM',
+            meme
+          })
+          .catch(() => {});
       }
     }
   };
@@ -230,6 +264,37 @@ export const Popup: React.FC = () => {
         </div>
       </header>
 
+      {/* Call status: Memecord stays idle unless this tab is in a call */}
+      {callState !== 'unknown' && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 10,
+            padding: '6px 10px',
+            borderRadius: 8,
+            fontSize: 11,
+            fontWeight: 600,
+            background: callState === 'in-call' ? 'rgba(52, 211, 153, 0.12)' : 'rgba(148, 163, 184, 0.1)',
+            border: `1px solid ${callState === 'in-call' ? 'rgba(52, 211, 153, 0.3)' : 'rgba(148, 163, 184, 0.2)'}`,
+            color: callState === 'in-call' ? '#6ee7b7' : '#94a3b8'
+          }}
+        >
+          <span
+            style={{
+              width: 7,
+              height: 7,
+              borderRadius: '50%',
+              background: callState === 'in-call' ? '#34d399' : '#64748b'
+            }}
+          />
+          {callState === 'in-call' && 'In a call — memes are live in this tab'}
+          {callState === 'idle' && 'Not in a call — Memecord is idle until you join one'}
+          {callState === 'unsupported' && 'Open a video call tab (Meet, Discord, Zoom…) to use Memecord'}
+        </div>
+      )}
+
       {/* Chrome Extension Scope Pill */}
       <div style={{
         background: 'rgba(99, 102, 241, 0.1)',
@@ -336,6 +401,17 @@ export const Popup: React.FC = () => {
           spellCheck={false}
           style={{ width: '100%', padding: '6px 10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
         />
+        {settings.giphyApiKey && giphyUsage && (
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 600,
+              color: giphyUsage.remaining === 0 ? '#f87171' : giphyUsage.remaining <= 20 ? '#fbbf24' : '#94a3b8'
+            }}
+          >
+            {describeGiphyUsage(giphyUsage)}
+          </span>
+        )}
         <span style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.4 }}>
           The HUD's Trending tab always shows what's hot on Reddit. Add a key from{' '}
           <a href="https://developers.giphy.com/dashboard/" target="_blank" rel="noreferrer" style={{ color: '#a5b4fc' }}>

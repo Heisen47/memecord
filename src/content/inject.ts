@@ -311,10 +311,10 @@ interface ActiveCameraMeme {
   let selfViewTimer: any = null;
   let selfViewUntil = 0;
 
-  type DeliveryMode = 'camera' | 'virtual';
+  type DeliveryMode = 'camera' | 'virtual' | 'none';
 
-  function postDelivery(mode: DeliveryMode) {
-    const msg = { source: 'MEMECORD_CAMERA', type: 'MEME_DELIVERY', mode };
+  function postDelivery(mode: DeliveryMode, reason?: string) {
+    const msg = { source: 'MEMECORD_CAMERA', type: 'MEME_DELIVERY', mode, reason };
     const targets = new Set<Window>([window]);
     try {
       if (window.parent) targets.add(window.parent);
@@ -424,16 +424,24 @@ interface ActiveCameraMeme {
    * Camera off: briefly hand the call a meme-only video (dark background + the meme) in
    * place of "no video", then restore whatever the sender had before.
    */
-  async function deliverViaVirtualVideo(durationMs: number): Promise<boolean> {
+  async function deliverViaVirtualVideo(durationMs: number): Promise<{ ok: true } | { ok: false; reason: string }> {
     const senders = idleVideoSenders().filter((s) => !virtualSession?.swapped.has(s));
-    if (!senders.length && !virtualSession) return false;
+    if (!senders.length && !virtualSession) {
+      return {
+        ok: false,
+        reason:
+          allPeerConnections.size === 0
+            ? 'no call connection found in this tab yet'
+            : 'the call has no open video channel while your camera is off — turn your camera on so others see memes'
+      };
+    }
 
     if (!virtualSession) {
       const canvas = document.createElement('canvas');
       canvas.width = 1280;
       canvas.height = 720;
       const ctx = canvas.getContext('2d', { alpha: false });
-      if (!ctx) return false;
+      if (!ctx) return { ok: false, reason: 'this browser blocked the drawing surface needed to send the meme' };
 
       const draw = () => {
         const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -450,28 +458,31 @@ interface ActiveCameraMeme {
       draw();
 
       const track = canvas.captureStream(30).getVideoTracks()[0];
-      if (!track) return false;
+      if (!track) return { ok: false, reason: 'this browser could not create a video track to send the meme' };
       virtualSession = { track, drawTimer: setInterval(draw, 33), endTimer: null, swapped: new Map() };
     }
 
     const session = virtualSession;
+    let lastError = '';
     await Promise.all(
       senders.map(async (sender) => {
         const previous = sender.track;
         try {
           await sender.replaceTrack(session.track);
           session.swapped.set(sender, previous);
-        } catch (_) {}
+        } catch (err: any) {
+          lastError = err?.message || String(err);
+        }
       })
     );
 
     if (session.swapped.size === 0) {
       endVirtualSession();
-      return false;
+      return { ok: false, reason: `the call app refused the video swap (${lastError || 'unknown error'})` };
     }
     clearTimeout(session.endTimer);
     session.endTimer = setTimeout(endVirtualSession, durationMs + 350);
-    return true;
+    return { ok: true };
   }
 
   function routeMemeToCall(durationMs: number) {
@@ -481,10 +492,12 @@ interface ActiveCameraMeme {
       return;
     }
     deliverViaVirtualVideo(durationMs)
-      .then((ok) => {
-        if (ok) postDelivery('virtual');
+      .then((result) => {
+        if (result.ok) postDelivery('virtual');
+        // Frames with no call stay quiet; the HUD's timeout covers "no connection anywhere"
+        else if (allPeerConnections.size > 0) postDelivery('none', result.reason);
       })
-      .catch(() => {});
+      .catch((err) => postDelivery('none', `unexpected error while sending the meme (${err?.message || err})`));
   }
 
   const activeAudioTrackIds = new Set<string>();
@@ -956,9 +969,14 @@ interface ActiveCameraMeme {
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
 
-    // Calculate dimensions: meme takes ~52% of video height
-    const maxH = canvasH * 0.52;
-    const maxW = canvasW * 0.48;
+    // Size relative to the video frame. Viewers often watch on a phone-sized tile, so the
+    // meme gets most of the frame (less when parked in a corner) and the caption stays big.
+    const corner = position === 'top-right' || position === 'bottom-right';
+    const margin = Math.round(canvasH * 0.04);
+    const pillH = Math.max(30, Math.round(canvasH * 0.07));
+    const pillGap = Math.round(canvasH * 0.015);
+    const maxH = canvasH * (corner ? 0.6 : 0.74) - pillH - pillGap;
+    const maxW = canvasW * (corner ? 0.6 : 0.82);
 
     const aspect = naturalW / naturalH;
     let memeW = maxW;
@@ -971,31 +989,31 @@ interface ActiveCameraMeme {
 
     const scaledW = memeW * scale;
     const scaledH = memeH * scale;
+    // Block = meme + gap + caption pill, laid out as one unit so the caption never leaves the frame
+    const blockH = scaledH + pillGap + pillH;
 
     let x = (canvasW - scaledW) / 2;
-    let y = (canvasH - scaledH) / 2;
+    let y = (canvasH - blockH) / 2;
 
     switch (position) {
       case 'top-center':
-        x = (canvasW - scaledW) / 2;
-        y = canvasH * 0.05;
+        y = margin;
         break;
       case 'top-right':
-        x = canvasW - scaledW - canvasW * 0.05;
-        y = canvasH * 0.05;
+        x = canvasW - scaledW - margin;
+        y = margin;
         break;
       case 'bottom-right':
-        x = canvasW - scaledW - canvasW * 0.05;
-        y = canvasH - scaledH - canvasH * 0.12;
+        x = canvasW - scaledW - margin;
+        y = canvasH - blockH - margin;
         break;
       case 'center':
       default:
-        x = (canvasW - scaledW) / 2;
-        y = (canvasH - scaledH) / 2 - canvasH * 0.03;
         break;
     }
+    y = Math.max(margin / 2, Math.min(y, canvasH - blockH - margin / 2));
 
-    const radius = 16;
+    const radius = Math.max(16, Math.round(canvasH * 0.028));
 
     // 1. Glowing background shadow
     ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
@@ -1019,6 +1037,8 @@ interface ActiveCameraMeme {
     ctx.clip();
 
     try {
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(drawable, x, y, scaledW, scaledH);
     } catch (e) {
       console.warn('[Memecord Camera] Error drawing meme:', e);
@@ -1029,31 +1049,34 @@ interface ActiveCameraMeme {
     // 4. Draw outer border
     ctx.beginPath();
     roundRect(ctx, x, y, scaledW, scaledH, radius);
-    ctx.lineWidth = 3.5;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+    ctx.lineWidth = Math.max(3.5, canvasH * 0.007);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.95)';
     ctx.stroke();
 
-    // 5. Title Pill
-    const titleText = meme.name;
-    ctx.font = `bold ${Math.max(12, Math.round(canvasH * 0.026))}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
-    const textWidth = ctx.measureText(titleText).width;
-    const pillW = textWidth + 24;
-    const pillH = Math.max(22, Math.round(canvasH * 0.04));
-    const pillX = x + (scaledW - pillW) / 2;
-    const pillY = y + scaledH + 8;
+    // 5. Caption pill (bold, high contrast, truncated to fit the frame)
+    ctx.font = `800 ${Math.max(16, Math.round(pillH * 0.56))}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+    const padX = Math.round(pillH * 0.5);
+    const maxTextW = canvasW * 0.9 - padX * 2;
+    let titleText = meme.name;
+    while (titleText.length > 3 && ctx.measureText(titleText).width > maxTextW) {
+      titleText = titleText.slice(0, -2).trimEnd() + '…';
+    }
+    const pillW = ctx.measureText(titleText).width + padX * 2;
+    const pillX = Math.max(margin / 2, Math.min(x + (scaledW - pillW) / 2, canvasW - pillW - margin / 2));
+    const pillY = y + scaledH + pillGap;
 
     ctx.beginPath();
     roundRect(ctx, pillX, pillY, pillW, pillH, pillH / 2);
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+    ctx.fillStyle = 'rgba(8, 10, 16, 0.92)';
     ctx.fill();
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = Math.max(1.5, canvasH * 0.003);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(titleText, pillX + pillW / 2, pillY + pillH / 2);
+    ctx.fillText(titleText, pillX + pillW / 2, pillY + pillH / 2 + 1);
 
     ctx.restore();
   }

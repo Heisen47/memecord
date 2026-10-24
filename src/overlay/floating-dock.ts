@@ -2,7 +2,8 @@ import { MemeItem, MemeOverlayPosition } from '../shared/types';
 import { assignDefaultHotkey } from '../shared/media-resolver';
 import { getToggleShortcutText, getToggleShortcutFullLabel } from '../shared/platform';
 import { el, icon, createMediaThumb, resolveAssetUrl } from './dom-utils';
-import { TrendingFeed, TrendingMeme } from '../shared/trending';
+import { TrendingFeed, TrendingMeme, GiphySearchResult } from '../shared/trending';
+import { UsageInfo, describeGiphyUsage } from '../shared/usage';
 
 export interface AddMemePrefill {
   file?: File;
@@ -24,7 +25,7 @@ export interface FloatingDockCallbacks {
   onPositionChange?: (position: MemeOverlayPosition) => void;
   onTriggerTrending?: (meme: TrendingMeme) => void;
   onLoadTrending?: (force: boolean) => Promise<TrendingFeed>;
-  onSearchTrending?: (query: string) => Promise<TrendingMeme[]>;
+  onSearchTrending?: (query: string) => Promise<GiphySearchResult | null>;
 }
 
 const ANCHOR_STORAGE_KEY = 'memecord_dock_anchor';
@@ -79,7 +80,6 @@ export class FloatingDock {
   private element: HTMLElement | null = null;
   private pebble: HTMLButtonElement | null = null;
   private gridContainer: HTMLElement | null = null;
-  private statusEl: HTMLElement | null = null;
   private addBtn: HTMLButtonElement | null = null;
   private refreshBtn: HTMLButtonElement | null = null;
   private searchInput: HTMLInputElement | null = null;
@@ -90,6 +90,8 @@ export class FloatingDock {
   private trendingLoading = false;
   private trendingError = '';
   private searchResults: TrendingMeme[] = [];
+  private usage: UsageInfo | undefined;
+  private searchError = '';
   private searchTimer: any = null;
   private searchToken = 0;
   private editBtn: HTMLButtonElement | null = null;
@@ -101,7 +103,6 @@ export class FloatingDock {
   private isEditMode = false;
   private isVisible = false;
   private searchQuery = '';
-  private callMode: CallMode = 'local';
   private currentPosition: MemeOverlayPosition = 'top-center';
   private memes: MemeItem[] = [];
   private callbacks: FloatingDockCallbacks;
@@ -146,8 +147,6 @@ export class FloatingDock {
 
     const heading = el('div', 'memecord-deck-heading');
     heading.appendChild(el('span', 'memecord-deck-title', 'Memecord'));
-    this.statusEl = el('span', 'memecord-status');
-    heading.appendChild(this.statusEl);
 
     const editBtn = this.iconButton('pencil', 'Edit keys & remove memes');
     editBtn.addEventListener('click', (e) => {
@@ -309,7 +308,6 @@ export class FloatingDock {
     this.pebble = pebble;
 
     this.setPosition(this.currentPosition);
-    this.setCallMode(this.callMode);
     this.setView('mine');
     this.applyAnchor();
   }
@@ -339,21 +337,8 @@ export class FloatingDock {
     });
   }
 
-  public setCallMode(mode: CallMode) {
-    this.callMode = mode;
-    if (this.statusEl) {
-      this.statusEl.className = `memecord-status ${mode}`;
-      this.statusEl.innerHTML = '';
-      this.statusEl.appendChild(el('span', 'memecord-dot'));
-      this.statusEl.appendChild(
-        el('span', '', mode === 'live' ? 'Live on your camera' : 'Camera off · only you see memes')
-      );
-    }
-    if (this.pebble) {
-      this.pebble.classList.toggle('live', mode === 'live');
-      this.pebble.classList.toggle('local', mode === 'local');
-    }
-  }
+  /** Kept for callers; the HUD no longer shows camera state (memes reach the call with the camera off too) */
+  public setCallMode(_mode: CallMode) {}
 
   /** Highlights a card with a countdown bar while its meme is on screen */
   public markFiring(memeId: string, durationMs: number) {
@@ -464,8 +449,9 @@ export class FloatingDock {
     if (this.view === 'trending') this.renderCards();
     try {
       this.trendingFeed = await this.callbacks.onLoadTrending(force);
+      this.usage = this.trendingFeed.usage;
       if (!this.trendingFeed.memes.length) {
-        this.trendingError = this.trendingFeed.errors[0] || 'Nothing trending right now.';
+        this.trendingError = this.trendingFeed.errors.join('\n') || 'The sources returned no usable memes right now.';
       }
     } catch (err: any) {
       this.trendingError = err?.message || 'Could not load trending memes.';
@@ -481,17 +467,25 @@ export class FloatingDock {
     if (this.searchTimer) clearTimeout(this.searchTimer);
     const query = this.searchQuery;
     const token = ++this.searchToken;
+    this.searchError = '';
     if (query.length < 2 || !this.callbacks.onSearchTrending) {
       this.searchResults = [];
+      this.renderTrendingMeta();
       return;
     }
     this.searchTimer = setTimeout(async () => {
       try {
-        const results = await this.callbacks.onSearchTrending!(query);
+        const result = await this.callbacks.onSearchTrending!(query);
         if (token !== this.searchToken || this.view !== 'trending') return;
-        this.searchResults = results;
-        this.renderCards();
-      } catch (_) {}
+        this.searchResults = result?.memes || [];
+        if (result?.usage) this.usage = result.usage;
+      } catch (err: any) {
+        if (token !== this.searchToken) return;
+        this.searchResults = [];
+        this.searchError = err?.message || 'GIPHY search failed';
+      }
+      this.renderTrendingMeta();
+      this.renderCards();
     }, 400);
   }
 
@@ -509,10 +503,24 @@ export class FloatingDock {
     }
     if (!feed) return;
     const labels = feed.sources.map((s) => (s === 'giphy' ? 'GIPHY' : 'Reddit'));
-    meta.appendChild(el('span', '', `Hot on ${labels.join(' + ') || '—'} · ${timeAgo(feed.fetchedAt)}`));
-    if (!feed.sources.includes('giphy')) {
+    if (labels.length) meta.appendChild(el('span', '', `Hot on ${labels.join(' + ')} · ${timeAgo(feed.fetchedAt)}`));
+
+    // Free-key allowance: always visible so a hit limit never comes as a surprise
+    if (this.usage) {
+      const level = this.usage.remaining === 0 ? 'out' : this.usage.remaining <= 20 ? 'low' : '';
+      meta.appendChild(el('span', `memecord-usage ${level}`, describeGiphyUsage(this.usage)));
+    } else {
       meta.appendChild(el('span', 'memecord-trending-tip', 'Add a GIPHY key in settings for trending GIFs'));
     }
+    meta.appendChild(el('span', 'memecord-trending-tip', 'Reddit feed (meme-api.com): no published limit'));
+
+    // With an empty grid the errors are already spelled out below, so only list them for partial feeds
+    const shownErrors = feed.memes.length ? feed.errors : [];
+    [...shownErrors, ...(this.searchError ? [this.searchError] : [])].forEach((message) => {
+      const line = el('span', 'memecord-trending-error', message);
+      line.setAttribute('role', 'alert');
+      meta.appendChild(line);
+    });
   }
 
   // ---------- Cards ----------
@@ -621,11 +629,15 @@ export class FloatingDock {
         return;
       }
       if (q) {
-        empty.appendChild(el('strong', '', 'No matches'));
-        empty.appendChild(el('span', '', `Nothing trending for "${q}".`));
+        empty.appendChild(el('strong', '', this.searchError ? 'GIPHY search failed' : 'No matches'));
+        empty.appendChild(el('span', this.searchError ? 'memecord-trending-error' : '', this.searchError || `Nothing trending for "${q}".`));
       } else {
         empty.appendChild(el('strong', '', 'Couldn\'t load trending memes'));
-        empty.appendChild(el('span', '', this.trendingError || 'Check your connection and try again.'));
+        (this.trendingError || 'Check your connection and try again.').split('\n').forEach((line) => {
+          const err = el('span', 'memecord-trending-error', line);
+          err.setAttribute('role', 'alert');
+          empty.appendChild(err);
+        });
         const retry = el('button', 'memecord-btn', 'Try again');
         retry.type = 'button';
         retry.addEventListener('click', (e) => {
