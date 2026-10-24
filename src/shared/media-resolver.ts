@@ -124,6 +124,24 @@ export async function fetchAsDataUrl(mediaUrl: string): Promise<string> {
     }
   }
 
+  // Outside the extension (Test Lab / dev server) bundled memes are plain site files
+  if ((typeof chrome === 'undefined' || !chrome.runtime?.id) && (mediaUrl.startsWith('memes/') || mediaUrl.startsWith('/memes/'))) {
+    try {
+      const blob = await (await fetch(`/${mediaUrl.replace(/^\//, '')}`)).blob();
+      return await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          dataUrlCache.set(mediaUrl, reader.result as string);
+          resolve(reader.result as string);
+        };
+        reader.onerror = () => reject(reader.error);
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.warn('[Memecord] Failed to read bundled meme:', err);
+    }
+  }
+
   // Local extension asset -> fetch directly and convert to base64 Data URL
   if (fetchUrl.startsWith('chrome-extension://')) {
     try {

@@ -225,6 +225,7 @@ interface ActiveCameraMeme {
       const meme = event.data.meme as MemeItem;
       const position = event.data.position || currentPosition;
       activateMeme(meme, position);
+      routeMemeToCall(meme.durationMs || 2500);
     }
 
     if (event.data.type === 'UPDATE_CAMERA_SETTINGS') {
@@ -299,6 +300,191 @@ interface ActiveCameraMeme {
     };
 
     console.log(`[Memecord Camera] Activated meme on camera feed: ${meme.name} (${isVideo ? 'Video' : 'GIF/Image'})`);
+  }
+
+  // ---- Delivery to the call --------------------------------------------------
+  const allPeerConnections = new Set<any>();
+  // outgoing (composited / cloned) camera track -> the raw camera track behind it
+  const rawCameraFor = new Map<MediaStreamTrack, MediaStreamTrack>();
+  const cleanStreams = new Map<MediaStreamTrack, MediaStream>();
+  const savedSelfViews = new Map<HTMLVideoElement, MediaProvider | null>();
+  let selfViewTimer: any = null;
+  let selfViewUntil = 0;
+
+  type DeliveryMode = 'camera' | 'virtual';
+
+  function postDelivery(mode: DeliveryMode) {
+    const msg = { source: 'MEMECORD_CAMERA', type: 'MEME_DELIVERY', mode };
+    const targets = new Set<Window>([window]);
+    try {
+      if (window.parent) targets.add(window.parent);
+      if (window.top) targets.add(window.top);
+    } catch (_) {}
+    targets.forEach((w) => {
+      try {
+        w.postMessage(msg, '*');
+      } catch (_) {}
+    });
+  }
+
+  /**
+   * While a meme is up, point your own video tile at the raw camera so you don't see a
+   * mirrored second copy (the meme is already shown to you, un-mirrored, by the HUD).
+   * The outgoing stream the call sends is untouched.
+   */
+  function applyCleanSelfView() {
+    document.querySelectorAll('video').forEach((v) => {
+      if (v.hasAttribute('data-memecord-keep')) return;
+      const src = v.srcObject;
+      if (!(src instanceof MediaStream)) return;
+      for (const track of src.getVideoTracks()) {
+        const raw = rawCameraFor.get(track);
+        if (!raw || raw.readyState === 'ended') continue;
+        let clean = cleanStreams.get(raw);
+        if (!clean) {
+          clean = new MediaStream([raw]);
+          cleanStreams.set(raw, clean);
+        }
+        if (!savedSelfViews.has(v)) savedSelfViews.set(v, src);
+        v.srcObject = clean;
+        v.play().catch(() => {});
+        break;
+      }
+    });
+  }
+
+  function restoreSelfViews() {
+    if (selfViewTimer) clearInterval(selfViewTimer);
+    selfViewTimer = null;
+    savedSelfViews.forEach((original, v) => {
+      if (!v.isConnected) return;
+      v.srcObject = original as MediaStream | null;
+      v.play().catch(() => {});
+    });
+    savedSelfViews.clear();
+  }
+
+  function holdCleanSelfView(durationMs: number) {
+    selfViewUntil = performance.now() + durationMs + 350;
+    applyCleanSelfView();
+    if (!selfViewTimer) {
+      selfViewTimer = setInterval(() => {
+        if (performance.now() > selfViewUntil) restoreSelfViews();
+        else applyCleanSelfView();
+      }, 300);
+    }
+  }
+
+  /** Video senders that are currently sending nothing (camera off / muted) */
+  function idleVideoSenders(): RTCRtpSender[] {
+    const out: RTCRtpSender[] = [];
+    allPeerConnections.forEach((pc) => {
+      let transceivers: RTCRtpTransceiver[] = [];
+      try {
+        transceivers = pc.getTransceivers();
+      } catch (_) {}
+      transceivers.forEach((t) => {
+        const sender = t.sender;
+        if (!sender || t.receiver?.track?.kind !== 'video') return;
+        const dir = (t as any).currentDirection ?? t.direction;
+        if (dir === 'recvonly' || dir === 'inactive' || (dir as string) === 'stopped') return;
+        const track = sender.track;
+        const idle =
+          !track ||
+          track.readyState === 'ended' ||
+          (outgoingVideoTracks.has(track) && !track.enabled);
+        if (idle) out.push(sender);
+      });
+    });
+    return out;
+  }
+
+  interface VirtualSession {
+    track: MediaStreamTrack;
+    drawTimer: any;
+    endTimer: any;
+    swapped: Map<RTCRtpSender, MediaStreamTrack | null>;
+  }
+  let virtualSession: VirtualSession | null = null;
+
+  function endVirtualSession() {
+    const session = virtualSession;
+    if (!session) return;
+    virtualSession = null;
+    clearInterval(session.drawTimer);
+    clearTimeout(session.endTimer);
+    session.swapped.forEach((previous, sender) => {
+      const restore = previous && previous.readyState !== 'ended' ? previous : null;
+      sender.replaceTrack(restore).catch(() => {});
+    });
+    session.track.stop();
+  }
+
+  /**
+   * Camera off: briefly hand the call a meme-only video (dark background + the meme) in
+   * place of "no video", then restore whatever the sender had before.
+   */
+  async function deliverViaVirtualVideo(durationMs: number): Promise<boolean> {
+    const senders = idleVideoSenders().filter((s) => !virtualSession?.swapped.has(s));
+    if (!senders.length && !virtualSession) return false;
+
+    if (!virtualSession) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 1280;
+      canvas.height = 720;
+      const ctx = canvas.getContext('2d', { alpha: false });
+      if (!ctx) return false;
+
+      const draw = () => {
+        const grad = ctx.createLinearGradient(0, 0, 0, canvas.height);
+        grad.addColorStop(0, '#171a24');
+        grad.addColorStop(1, '#0b0d12');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        if (activeMeme) {
+          const elapsed = performance.now() - activeMeme.startTime;
+          if (elapsed > activeMeme.durationMs) cleanupActiveMeme();
+          else drawMemeOverlay(ctx, canvas.width, canvas.height, activeMeme, elapsed);
+        }
+      };
+      draw();
+
+      const track = canvas.captureStream(30).getVideoTracks()[0];
+      if (!track) return false;
+      virtualSession = { track, drawTimer: setInterval(draw, 33), endTimer: null, swapped: new Map() };
+    }
+
+    const session = virtualSession;
+    await Promise.all(
+      senders.map(async (sender) => {
+        const previous = sender.track;
+        try {
+          await sender.replaceTrack(session.track);
+          session.swapped.set(sender, previous);
+        } catch (_) {}
+      })
+    );
+
+    if (session.swapped.size === 0) {
+      endVirtualSession();
+      return false;
+    }
+    clearTimeout(session.endTimer);
+    session.endTimer = setTimeout(endVirtualSession, durationMs + 350);
+    return true;
+  }
+
+  function routeMemeToCall(durationMs: number) {
+    if (outgoingVideoTracks.size > 0 && isOutgoingCameraOn()) {
+      postDelivery('camera');
+      holdCleanSelfView(durationMs);
+      return;
+    }
+    deliverViaVirtualVideo(durationMs)
+      .then((ok) => {
+        if (ok) postDelivery('virtual');
+      })
+      .catch(() => {});
   }
 
   const activeAudioTrackIds = new Set<string>();
@@ -412,6 +598,7 @@ interface ActiveCameraMeme {
 
       const WrappedRTCPeerConnection = function (this: any, ...args: any[]) {
         const pc = new OrigPeerConnection(...args);
+        allPeerConnections.add(pc);
 
         const checkConnection = () => {
           const isConnected =
@@ -443,6 +630,7 @@ interface ActiveCameraMeme {
 
         const origClose = pc.close.bind(pc);
         pc.close = function () {
+          allPeerConnections.delete(pc);
           activeConnections.delete(pc);
           broadcastWebRtcState();
           return origClose();
@@ -606,11 +794,13 @@ interface ActiveCameraMeme {
       cloned.getConstraints = virtualVideoTrack.getConstraints;
       cloned.applyConstraints = virtualVideoTrack.applyConstraints;
       outgoingVideoTracks.add(cloned);
+      rawCameraFor.set(cloned, realVideoTrack);
       return cloned;
     };
 
     // Track active video track
     outgoingVideoTracks.add(virtualVideoTrack);
+    rawCameraFor.set(virtualVideoTrack, realVideoTrack);
     activeVideoTrackIds.add(virtualVideoTrack.id);
     activeVideoTrackIds.add(realVideoTrack.id);
     broadcastCallStreamState();
@@ -629,6 +819,8 @@ interface ActiveCameraMeme {
       activeVideoTrackIds.delete(realVideoTrack.id);
       activeVideoTrackIds.delete(virtualVideoTrack.id);
       outgoingVideoTracks.delete(virtualVideoTrack);
+      rawCameraFor.delete(virtualVideoTrack);
+      cleanStreams.delete(realVideoTrack);
       broadcastCallStreamState();
       origStop();
     };

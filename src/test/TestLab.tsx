@@ -109,6 +109,14 @@ export const TestLab: React.FC = () => {
       addLog('Memecord Test Lab initialized. Press 1–9, 0, Q... or click dock buttons (works with or without cam).');
     });
 
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.source === 'MEMECORD_CAMERA' && event.data.type === 'MEME_DELIVERY') {
+        overlayRef.current?.setDelivery(event.data.mode);
+        addLog(`Meme reached the call (${event.data.mode === 'camera' ? 'on camera' : 'camera-off video'}).`);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+
     const handleKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
@@ -147,6 +155,7 @@ export const TestLab: React.FC = () => {
 
     return () => {
       cancelled = true;
+      window.removeEventListener('message', handleMessage);
       window.removeEventListener('keydown', handleKeyDown);
       overlayRef.current?.destroy();
       overlayRef.current = null;
@@ -334,6 +343,7 @@ export const TestLab: React.FC = () => {
             }}
           >
             <video
+              data-memecord-keep=""
               ref={videoPreviewRef}
               autoPlay
               playsInline

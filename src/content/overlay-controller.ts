@@ -268,6 +268,8 @@ export class OverlayController {
           this.isCameraStreaming = Boolean(event.data.active);
           this.overlay?.setCameraLive(this.isCameraStreaming);
           this.checkCallState();
+        } else if (event.data.type === 'MEME_DELIVERY') {
+          this.overlay?.setDelivery(event.data.mode === 'camera' || event.data.mode === 'virtual' ? event.data.mode : 'none');
         } else if (event.data.type === 'WEBRTC_CALL_STATE') {
           this.isWebRtcConnected = Boolean(event.data.active);
           this.checkCallState();

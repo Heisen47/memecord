@@ -31,6 +31,9 @@ export class MemeOverlayManager {
   private settings: AppSettings;
   private callbacks: MemeOverlayCallbacks;
   private callMode: CallMode = 'local';
+  private badgeEl: HTMLElement | null = null;
+  private captionEl: HTMLElement | null = null;
+  private deliveryTimer: any = null;
   private audioCtx: AudioContext | null = null;
 
   constructor(settings: AppSettings, callbacks: MemeOverlayCallbacks = {}) {
@@ -161,9 +164,9 @@ export class MemeOverlayManager {
   }
 
   /**
-   * Shows the meme on your own screen. When your camera is live the remote side
-   * already gets it stamped on video (and your self-view shows it), so the local
-   * copy is a small confirmation; otherwise it's the full-size preview with a nudge.
+   * Shows the meme on your own screen, un-mirrored, exactly as the HUD previews it.
+   * The call side is handled by the page script; it reports back via setDelivery so
+   * the badge says whether other people are actually seeing it too.
    */
   public showMeme(meme: MemeItem) {
     if (!this.root || !this.settings.enabled) return;
@@ -174,34 +177,39 @@ export class MemeOverlayManager {
 
     if (this.hideTimeoutId) clearTimeout(this.hideTimeoutId);
     if (this.removeTimeoutId) clearTimeout(this.removeTimeoutId);
+    if (this.deliveryTimer) clearTimeout(this.deliveryTimer);
     this.hideTimeoutId = null;
     this.removeTimeoutId = null;
     this.currentMemeBox?.remove();
     this.currentMemeBox = null;
 
     const duration = meme.durationMs || this.settings.defaultDurationMs || 2500;
-    const live = this.callMode === 'live';
     this.floatingDock?.markFiring(meme.id, duration);
 
-    const box = el('div', `memecord-meme-box ${this.getPositionClass(this.settings.position || 'top-center')}${live ? ' compact' : ''}`);
+    const box = el('div', `memecord-meme-box ${this.getPositionClass(this.settings.position || 'top-center')}`);
     box.setAttribute('aria-live', 'polite');
 
     const media = createMediaThumb(meme.assetUrl, meme.name, 'memecord-meme-image');
 
     const title = el('div', 'memecord-meme-title');
-    const badge = el('span', `memecord-meme-badge ${live ? 'live' : 'local'}`);
+    const badge = el('span', 'memecord-meme-badge local');
     badge.appendChild(el('span', 'memecord-dot'));
-    badge.appendChild(el('span', '', live ? 'On camera' : 'Only you'));
+    badge.appendChild(el('span', '', 'Sending…'));
     title.append(badge, el('span', '', meme.name));
 
-    box.append(media, title);
-    if (!live) {
-      box.appendChild(el('div', 'memecord-meme-caption', 'Turn your camera on so others see it'));
-    }
+    const caption = el('div', 'memecord-meme-caption');
+    caption.style.display = 'none';
+
+    box.append(media, title, caption);
+    this.badgeEl = badge;
+    this.captionEl = caption;
 
     this.root.appendChild(box);
     this.currentMemeBox = box;
     requestAnimationFrame(() => box.classList.add('visible'));
+
+    // If the page script doesn't confirm delivery shortly, nobody on the call saw it
+    this.deliveryTimer = setTimeout(() => this.setDelivery('none'), 900);
 
     this.hideTimeoutId = setTimeout(() => {
       box.classList.remove('visible');
@@ -211,6 +219,23 @@ export class MemeOverlayManager {
         if (this.currentMemeBox === box) this.currentMemeBox = null;
       }, 300);
     }, duration);
+  }
+
+  /** Reported by the page script after each trigger: how (or whether) the call got the meme */
+  public setDelivery(mode: 'camera' | 'virtual' | 'none') {
+    if (this.deliveryTimer) {
+      clearTimeout(this.deliveryTimer);
+      this.deliveryTimer = null;
+    }
+    if (!this.badgeEl || !this.currentMemeBox) return;
+    const label = this.badgeEl.lastElementChild as HTMLElement | null;
+    const sent = mode !== 'none';
+    this.badgeEl.className = `memecord-meme-badge ${sent ? 'live' : 'local'}`;
+    if (label) label.textContent = sent ? 'Everyone sees this' : 'Only you';
+    if (this.captionEl) {
+      this.captionEl.style.display = sent ? 'none' : '';
+      this.captionEl.textContent = 'Couldn\'t reach the call — turn your camera on so others see it';
+    }
   }
 
   /** Brief outline in the chosen spot so the position picker gives visible feedback */
@@ -648,6 +673,7 @@ export class MemeOverlayManager {
     this.floatingDock?.destroy();
     this.floatingDock = null;
     this.closeModal();
+    if (this.deliveryTimer) clearTimeout(this.deliveryTimer);
     this.audioCtx?.close().catch(() => {});
     this.audioCtx = null;
 
