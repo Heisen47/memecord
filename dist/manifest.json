@@ -35,7 +35,10 @@
     "https://facetime.apple.com/*",
     "https://web.whatsapp.com/*",
     "https://api.imgflip.com/*",
-    "https://meme-api.com/*"
+    "https://meme-api.com/*",
+    "https://*.giphy.com/*",
+    "https://i.redd.it/*",
+    "https://preview.redd.it/*"
   ],
   "content_scripts": [
     {

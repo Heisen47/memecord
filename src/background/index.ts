@@ -1,4 +1,6 @@
 import { DEFAULT_SETTINGS } from '../shared/config';
+import { getSettings } from '../shared/storage';
+import { getCachedTrending, searchGiphyDirect } from '../shared/trending';
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   console.log('[Memecord] Extension installed/updated, reason:', details.reason);
@@ -71,6 +73,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       }
     })();
     return true; // Keep channel open for async response
+  }
+
+  // Live trending feed (Reddit hot + optional GIPHY trending), cached for 20 min
+  if (message.type === 'GET_TRENDING_MEMES') {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        const feed = await getCachedTrending(settings.giphyApiKey?.trim() || undefined, Boolean(message.force));
+        sendResponse({ success: true, feed });
+      } catch (err: any) {
+        sendResponse({ success: false, error: err?.message || 'Failed to load trending memes' });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === 'SEARCH_GIPHY') {
+    (async () => {
+      try {
+        const settings = await getSettings();
+        const key = settings.giphyApiKey?.trim();
+        if (!key) {
+          sendResponse({ success: true, memes: [] });
+          return;
+        }
+        const memes = await searchGiphyDirect(key, String(message.query || '').slice(0, 50));
+        sendResponse({ success: true, memes });
+      } catch (err: any) {
+        sendResponse({ success: false, error: err?.message || 'GIPHY search failed' });
+      }
+    })();
+    return true;
   }
 
   // Fetch external media and convert to Base64 Data URL to bypass webpage CSP

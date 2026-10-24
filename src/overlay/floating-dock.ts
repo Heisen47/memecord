@@ -2,11 +2,15 @@ import { MemeItem, MemeOverlayPosition } from '../shared/types';
 import { assignDefaultHotkey } from '../shared/media-resolver';
 import { getToggleShortcutText, getToggleShortcutFullLabel } from '../shared/platform';
 import { el, icon, createMediaThumb, resolveAssetUrl } from './dom-utils';
+import { TrendingFeed, TrendingMeme } from '../shared/trending';
 
 export interface AddMemePrefill {
   file?: File;
   url?: string;
+  name?: string;
 }
+
+type DeckView = 'mine' | 'trending';
 
 /** 'live' = camera is on and memes are stamped onto it; 'local' = only you see them */
 export type CallMode = 'live' | 'local';
@@ -18,6 +22,9 @@ export interface FloatingDockCallbacks {
   onUpdateHotkey?: (memeId: string, newHotkey: string) => void;
   onMinimizedChange?: (minimized: boolean) => void;
   onPositionChange?: (position: MemeOverlayPosition) => void;
+  onTriggerTrending?: (meme: TrendingMeme) => void;
+  onLoadTrending?: (force: boolean) => Promise<TrendingFeed>;
+  onSearchTrending?: (query: string) => Promise<TrendingMeme[]>;
 }
 
 const ANCHOR_STORAGE_KEY = 'memecord_dock_anchor';
@@ -73,6 +80,18 @@ export class FloatingDock {
   private pebble: HTMLButtonElement | null = null;
   private gridContainer: HTMLElement | null = null;
   private statusEl: HTMLElement | null = null;
+  private addBtn: HTMLButtonElement | null = null;
+  private refreshBtn: HTMLButtonElement | null = null;
+  private searchInput: HTMLInputElement | null = null;
+  private trendingMeta: HTMLElement | null = null;
+  private tabButtons = new Map<DeckView, HTMLButtonElement>();
+  private view: DeckView = 'mine';
+  private trendingFeed: TrendingFeed | null = null;
+  private trendingLoading = false;
+  private trendingError = '';
+  private searchResults: TrendingMeme[] = [];
+  private searchTimer: any = null;
+  private searchToken = 0;
   private editBtn: HTMLButtonElement | null = null;
   private editBanner: HTMLElement | null = null;
   private contextMenu: HTMLElement | null = null;
@@ -146,6 +165,23 @@ export class FloatingDock {
 
     header.append(logo, heading, editBtn, minBtn);
 
+    // View switch: your saved deck vs. the live trending feed
+    const tabs = el('div', 'memecord-tabs');
+    tabs.setAttribute('role', 'tablist');
+    ([['mine', 'My memes'], ['trending', 'Trending']] as [DeckView, string][]).forEach(([view, label]) => {
+      const tab = el('button', 'memecord-tab');
+      tab.type = 'button';
+      tab.setAttribute('role', 'tab');
+      if (view === 'trending') tab.innerHTML = icon('flame', 14);
+      tab.appendChild(el('span', '', label));
+      tab.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.setView(view);
+      });
+      this.tabButtons.set(view, tab);
+      tabs.appendChild(tab);
+    });
+
     // Toolbar: search + add
     const toolbar = el('div', 'memecord-toolbar');
     const search = el('label', 'memecord-search');
@@ -157,11 +193,14 @@ export class FloatingDock {
     searchInput.addEventListener('input', () => {
       this.searchQuery = searchInput.value.trim().toLowerCase();
       this.renderCards();
+      if (this.view === 'trending') this.scheduleTrendingSearch();
     });
+    this.searchInput = searchInput;
     searchInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
         searchInput.value = '';
         this.searchQuery = '';
+        this.searchResults = [];
         this.renderCards();
         searchInput.blur();
       }
@@ -178,7 +217,22 @@ export class FloatingDock {
       this.setEditMode(false);
       this.callbacks.onAddMeme();
     });
-    toolbar.append(search, addBtn);
+    this.addBtn = addBtn;
+
+    const refreshBtn = el('button', 'memecord-btn');
+    refreshBtn.type = 'button';
+    refreshBtn.innerHTML = icon('refresh', 15);
+    refreshBtn.title = 'Refresh trending memes';
+    refreshBtn.setAttribute('aria-label', 'Refresh trending memes');
+    refreshBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.loadTrending(true);
+    });
+    this.refreshBtn = refreshBtn;
+    toolbar.append(search, addBtn, refreshBtn);
+
+    const trendingMeta = el('div', 'memecord-trending-meta');
+    this.trendingMeta = trendingMeta;
 
     // Edit-mode banner
     const banner = el('div', 'memecord-edit-banner');
@@ -226,7 +280,7 @@ export class FloatingDock {
     hint.appendChild(el('span', '', 'hide'));
     footer.append(posGroup, hint);
 
-    deck.append(header, toolbar, banner, grid, footer);
+    deck.append(header, tabs, toolbar, banner, trendingMeta, grid, footer);
     this.bindDropTarget(deck);
     this.bindDrag(deck, header);
     this.parent.appendChild(deck);
@@ -256,7 +310,7 @@ export class FloatingDock {
 
     this.setPosition(this.currentPosition);
     this.setCallMode(this.callMode);
-    this.renderCards();
+    this.setView('mine');
     this.applyAnchor();
   }
 
@@ -376,10 +430,99 @@ export class FloatingDock {
     this.applyAnchor();
   }
 
+  // ---------- Views ----------
+
+  private setView(view: DeckView) {
+    this.view = view;
+    if (view === 'trending') this.setEditMode(false);
+    this.tabButtons.forEach((btn, v) => {
+      btn.classList.toggle('active', v === view);
+      btn.setAttribute('aria-selected', String(v === view));
+    });
+    if (this.addBtn) this.addBtn.style.display = view === 'mine' ? '' : 'none';
+    if (this.refreshBtn) this.refreshBtn.style.display = view === 'trending' ? '' : 'none';
+    if (this.editBtn) this.editBtn.style.visibility = view === 'mine' ? 'visible' : 'hidden';
+    if (this.searchInput) {
+      this.searchInput.placeholder = view === 'trending' ? 'Search trending & GIFs' : 'Search memes';
+    }
+    this.searchResults = [];
+    if (view === 'trending' && this.searchQuery) this.scheduleTrendingSearch();
+    if (view === 'trending' && !this.trendingFeed && !this.trendingLoading) {
+      this.loadTrending(false);
+    }
+    this.renderTrendingMeta();
+    this.renderCards();
+    if (this.gridContainer) this.gridContainer.scrollTop = 0;
+  }
+
+  private async loadTrending(force: boolean) {
+    if (!this.callbacks.onLoadTrending || this.trendingLoading) return;
+    this.trendingLoading = true;
+    this.trendingError = '';
+    this.refreshBtn?.classList.add('spinning');
+    this.renderTrendingMeta();
+    if (this.view === 'trending') this.renderCards();
+    try {
+      this.trendingFeed = await this.callbacks.onLoadTrending(force);
+      if (!this.trendingFeed.memes.length) {
+        this.trendingError = this.trendingFeed.errors[0] || 'Nothing trending right now.';
+      }
+    } catch (err: any) {
+      this.trendingError = err?.message || 'Could not load trending memes.';
+    } finally {
+      this.trendingLoading = false;
+      this.refreshBtn?.classList.remove('spinning');
+      this.renderTrendingMeta();
+      if (this.view === 'trending') this.renderCards();
+    }
+  }
+
+  private scheduleTrendingSearch() {
+    if (this.searchTimer) clearTimeout(this.searchTimer);
+    const query = this.searchQuery;
+    const token = ++this.searchToken;
+    if (query.length < 2 || !this.callbacks.onSearchTrending) {
+      this.searchResults = [];
+      return;
+    }
+    this.searchTimer = setTimeout(async () => {
+      try {
+        const results = await this.callbacks.onSearchTrending!(query);
+        if (token !== this.searchToken || this.view !== 'trending') return;
+        this.searchResults = results;
+        this.renderCards();
+      } catch (_) {}
+    }, 400);
+  }
+
+  private renderTrendingMeta() {
+    const meta = this.trendingMeta;
+    if (!meta) return;
+    meta.style.display = this.view === 'trending' ? 'flex' : 'none';
+    meta.innerHTML = '';
+    if (this.view !== 'trending') return;
+
+    const feed = this.trendingFeed;
+    if (this.trendingLoading && !feed) {
+      meta.appendChild(el('span', '', 'Loading what\'s hot…'));
+      return;
+    }
+    if (!feed) return;
+    const labels = feed.sources.map((s) => (s === 'giphy' ? 'GIPHY' : 'Reddit'));
+    meta.appendChild(el('span', '', `Hot on ${labels.join(' + ') || '—'} · ${timeAgo(feed.fetchedAt)}`));
+    if (!feed.sources.includes('giphy')) {
+      meta.appendChild(el('span', 'memecord-trending-tip', 'Add a GIPHY key in settings for trending GIFs'));
+    }
+  }
+
   // ---------- Cards ----------
 
   private renderCards() {
     if (!this.gridContainer) return;
+    if (this.view === 'trending') {
+      this.renderTrendingCards();
+      return;
+    }
     this.gridContainer.innerHTML = '';
 
     const indexed = this.memes.map((meme, index) => ({ meme, key: hotkeyFor(meme, index) }));
@@ -458,6 +601,79 @@ export class FloatingDock {
         this.callbacks.onAddMeme();
       });
       this.gridContainer.appendChild(addTile);
+    }
+  }
+
+  private renderTrendingCards() {
+    const grid = this.gridContainer!;
+    grid.innerHTML = '';
+
+    const feedMemes = this.trendingFeed?.memes || [];
+    const q = this.searchQuery;
+    const local = q ? feedMemes.filter((m) => m.name.toLowerCase().includes(q)) : feedMemes;
+    const seen = new Set(local.map((m) => m.id));
+    const memes = [...local, ...this.searchResults.filter((m) => !seen.has(m.id))];
+
+    if (memes.length === 0) {
+      const empty = el('div', 'memecord-empty');
+      if (this.trendingLoading) {
+        for (let i = 0; i < 6; i++) grid.appendChild(el('div', 'memecord-skeleton'));
+        return;
+      }
+      if (q) {
+        empty.appendChild(el('strong', '', 'No matches'));
+        empty.appendChild(el('span', '', `Nothing trending for "${q}".`));
+      } else {
+        empty.appendChild(el('strong', '', 'Couldn\'t load trending memes'));
+        empty.appendChild(el('span', '', this.trendingError || 'Check your connection and try again.'));
+        const retry = el('button', 'memecord-btn', 'Try again');
+        retry.type = 'button';
+        retry.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.loadTrending(true);
+        });
+        empty.appendChild(retry);
+      }
+      grid.appendChild(empty);
+      return;
+    }
+
+    memes.forEach((meme) => {
+      const card = el('button', 'memecord-card trending');
+      card.type = 'button';
+      card.dataset.memeId = meme.id;
+      card.title = `Show "${meme.name}" now`;
+      card.setAttribute('aria-label', `Show ${meme.name}`);
+
+      const thumb = el('span', 'memecord-card-thumb');
+      thumb.appendChild(createMediaThumb(meme.thumbUrl || meme.assetUrl, meme.name));
+      thumb.appendChild(el('span', `memecord-source-tag ${meme.source}`, meme.source === 'giphy' ? 'GIF' : 'Reddit'));
+      thumb.appendChild(el('span', 'memecord-card-progress'));
+
+      const save = el('span', 'memecord-card-save');
+      save.setAttribute('role', 'button');
+      save.setAttribute('aria-label', `Save ${meme.name} to my memes`);
+      save.title = 'Save to my memes with a key';
+      save.innerHTML = icon('plus', 14);
+      save.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playHapticSound('pop');
+        this.callbacks.onAddMeme({ url: meme.assetUrl, name: meme.name });
+      });
+      thumb.appendChild(save);
+
+      card.appendChild(thumb);
+      card.appendChild(el('span', 'memecord-card-name', meme.name));
+      card.addEventListener('click', (e) => {
+        e.stopPropagation();
+        playHapticSound('pop');
+        this.callbacks.onTriggerTrending?.(meme);
+      });
+      grid.appendChild(card);
+    });
+
+    if (this.trendingFeed?.sources.includes('giphy') || this.searchResults.length) {
+      grid.appendChild(el('div', 'memecord-attribution', 'Powered by GIPHY'));
     }
   }
 
@@ -763,6 +979,7 @@ export class FloatingDock {
     this.closeActiveModal();
     this.firingTimers.forEach((t) => clearTimeout(t));
     this.firingTimers.clear();
+    if (this.searchTimer) clearTimeout(this.searchTimer);
     document.removeEventListener('click', this.docClickHandler);
     window.removeEventListener('resize', this.resizeHandler);
     this.element?.remove();
@@ -770,4 +987,11 @@ export class FloatingDock {
     this.pebble?.remove();
     this.pebble = null;
   }
+}
+
+function timeAgo(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  return `${Math.round(mins / 60)}h ago`;
 }

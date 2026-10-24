@@ -16,6 +16,7 @@ export interface AppSettings {
   position: MemeOverlayPosition;
   soundEnabled: boolean;
   memes: MemeItem[];
+  giphyApiKey?: string; // optional: adds GIPHY trending + search to the live feed
 }
 
 export type ExtensionMessage =
@@ -24,4 +25,6 @@ export type ExtensionMessage =
   | { type: 'UPDATE_SETTINGS'; payload: Partial<AppSettings> }
   | { type: 'TRIGGER_MEME'; memeId: string }
   | { type: 'TRIGGER_MEME_ITEM'; meme: MemeItem }
-  | { type: 'TOGGLE_DOCK' };
+  | { type: 'TOGGLE_DOCK' }
+  | { type: 'GET_TRENDING_MEMES'; force?: boolean }
+  | { type: 'SEARCH_GIPHY'; query: string };

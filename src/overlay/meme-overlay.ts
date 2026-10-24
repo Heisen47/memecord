@@ -4,6 +4,7 @@ import { OVERLAY_CSS } from './overlay-styles';
 import { resolveMediaUrl, findFirstAvailableHotkey } from '../shared/media-resolver';
 import { saveSettings, updateMemeHotkey, findClashingMeme } from '../shared/storage';
 import { PRESET_LIBRARY } from '../shared/config';
+import { getTrendingMemes, searchTrendingGifs, TrendingMeme } from '../shared/trending';
 import { el, icon, createMediaThumb, readFileAsDataUrl, nameFromFilename } from './dom-utils';
 
 export interface MemeOverlayCallbacks {
@@ -53,6 +54,16 @@ export class MemeOverlayManager {
           onAddMeme: (prefill) => {
             this.openQuickAddModal(prefill);
           },
+          onTriggerTrending: (trending) => {
+            const meme = this.toMemeItem(trending);
+            if (this.callbacks.onTriggerMeme) {
+              this.callbacks.onTriggerMeme(meme);
+            } else {
+              this.showMeme(meme);
+            }
+          },
+          onLoadTrending: (force) => getTrendingMemes(force),
+          onSearchTrending: (query) => searchTrendingGifs(query),
           onDeleteMeme: (memeId) => {
             const meme = this.settings.memes.find((m) => m.id === memeId);
             this.callbacks.onDeleteMeme?.(memeId);
@@ -82,6 +93,17 @@ export class MemeOverlayManager {
         !this.settings.dockVisible
       );
     }
+  }
+
+  /** Trending memes fire as one-off memes; they only get a key once saved to the deck */
+  private toMemeItem(trending: TrendingMeme): MemeItem {
+    return {
+      id: trending.id,
+      name: trending.name,
+      emoji: '',
+      assetUrl: trending.assetUrl,
+      durationMs: this.settings.defaultDurationMs || 2500
+    };
   }
 
   public updateSettings(settings: AppSettings) {
@@ -211,7 +233,7 @@ export class MemeOverlayManager {
     const nextKey = findFirstAvailableHotkey(this.settings.memes);
     const existingIds = new Set(this.settings.memes.map((m) => m.id));
     const existingUrls = new Set(this.settings.memes.map((m) => m.assetUrl));
-    const picks = PRESET_LIBRARY.filter((p) => !existingIds.has(p.id) && !existingUrls.has(p.assetUrl));
+    const isNew = (p: { id: string; assetUrl: string }) => !existingIds.has(p.id) && !existingUrls.has(p.assetUrl);
 
     // Selected source: either an uploaded/dropped data URL or a pasted link
     let source: { url: string; name?: string } | null = null;
@@ -260,18 +282,26 @@ export class MemeOverlayManager {
     urlInput.autocomplete = 'off';
     urlField.append(urlLabel, urlInput);
 
-    // Quick picks
-    let picksWrap: HTMLElement | null = null;
-    if (picks.length > 0) {
-      picksWrap = el('div', 'memecord-field');
-      picksWrap.appendChild(el('span', 'memecord-label', 'Or pick a classic'));
-      const pickGrid = el('div', 'memecord-picks');
+    // Quick picks: live trending memes, falling back to bundled classics when offline
+    type Pick = { id: string; name: string; assetUrl: string; thumbUrl: string };
+    const picksWrap = el('div', 'memecord-field');
+    const picksLabel = el('span', 'memecord-label', 'Or pick what\'s trending');
+    const pickGrid = el('div', 'memecord-picks');
+    picksWrap.append(picksLabel, pickGrid);
+    for (let i = 0; i < 6; i++) pickGrid.appendChild(el('div', 'memecord-skeleton'));
+
+    const renderPicks = (picks: Pick[]) => {
+      pickGrid.innerHTML = '';
+      if (picks.length === 0) {
+        picksWrap.style.display = 'none';
+        return;
+      }
       picks.slice(0, 12).forEach((p) => {
         const btn = el('button', 'memecord-pick');
         btn.type = 'button';
         btn.title = p.name;
         btn.setAttribute('aria-label', p.name);
-        btn.appendChild(createMediaThumb(p.assetUrl, p.name));
+        btn.appendChild(createMediaThumb(p.thumbUrl, p.name));
         btn.addEventListener('click', () => {
           pickGrid.querySelectorAll('.memecord-pick').forEach((b) => b.classList.remove('selected'));
           btn.classList.add('selected');
@@ -281,8 +311,18 @@ export class MemeOverlayManager {
         });
         pickGrid.appendChild(btn);
       });
-      picksWrap.appendChild(pickGrid);
-    }
+    };
+
+    getTrendingMemes()
+      .then((feed) => {
+        const picks = feed.memes.filter(isNew);
+        if (!picks.length) throw new Error('empty');
+        renderPicks(picks);
+      })
+      .catch(() => {
+        picksLabel.textContent = 'Or pick a classic';
+        renderPicks(PRESET_LIBRARY.filter(isNew).map((p) => ({ ...p, thumbUrl: p.assetUrl })));
+      });
 
     // Name + key
     const row = el('div', 'memecord-row');
@@ -329,7 +369,7 @@ export class MemeOverlayManager {
     actions.append(cancelBtn, submitBtn);
 
     modal.append(head, dropzone, fileInput, el('div', 'memecord-divider', 'or'), urlField);
-    if (picksWrap) modal.appendChild(picksWrap);
+    modal.appendChild(picksWrap);
     modal.append(row, hint, preview, actions);
     backdrop.appendChild(modal);
 
@@ -532,6 +572,10 @@ export class MemeOverlayManager {
     if (prefill.file) {
       useFile(prefill.file);
     } else if (prefill.url) {
+      if (prefill.name) {
+        nameInput.value = prefill.name;
+        nameTouched = true;
+      }
       urlInput.value = prefill.url;
       useUrl(prefill.url);
     }

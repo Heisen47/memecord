@@ -18,7 +18,8 @@ import {
   Loader2,
   Edit2,
   Check,
-  X
+  X,
+  Flame
 } from 'lucide-react';
 import { MemeApiModal } from './MemeApiModal';
 
@@ -40,9 +41,26 @@ export const Popup: React.FC = () => {
   const [editKeyVal, setEditKeyVal] = useState<string>('');
   const [editKeyError, setEditKeyError] = useState<string | null>(null);
 
+  // GIPHY key is kept as a draft until blur so we don't write storage on every keystroke
+  const [giphyKeyDraft, setGiphyKeyDraft] = useState('');
+
   useEffect(() => {
-    getSettings().then(setSettings);
+    getSettings().then((s) => {
+      setSettings(s);
+      setGiphyKeyDraft(s.giphyApiKey || '');
+    });
   }, []);
+
+  const handleSaveGiphyKey = async () => {
+    const giphyApiKey = giphyKeyDraft.trim();
+    if (giphyApiKey === (settings.giphyApiKey || '')) return;
+    const updated = await saveSettings({ giphyApiKey });
+    setSettings(updated);
+    // Drop the cached feed so the next refresh includes (or excludes) GIPHY
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.remove('memecord_trending_cache');
+    }
+  };
 
   const handleToggleEnabled = async () => {
     const updated = await saveSettings({ enabled: !settings.enabled });
@@ -298,6 +316,33 @@ export const Popup: React.FC = () => {
         >
           {settings.soundEnabled ? <Volume2 size={13} color="#4ade80" /> : <VolumeX size={13} color="#94a3b8" />}
         </button>
+      </div>
+
+      {/* Trending feed source */}
+      <div className="setting-card" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <Flame size={12} /> Trending GIFs (optional GIPHY key)
+        </label>
+        <input
+          type="password"
+          value={giphyKeyDraft}
+          placeholder="Paste a free GIPHY API key"
+          onChange={(e) => setGiphyKeyDraft(e.target.value)}
+          onBlur={handleSaveGiphyKey}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+          }}
+          autoComplete="off"
+          spellCheck={false}
+          style={{ width: '100%', padding: '6px 10px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, color: '#fff', fontSize: 12 }}
+        />
+        <span style={{ fontSize: 10.5, color: '#94a3b8', lineHeight: 1.4 }}>
+          The HUD's Trending tab always shows what's hot on Reddit. Add a key from{' '}
+          <a href="https://developers.giphy.com/dashboard/" target="_blank" rel="noreferrer" style={{ color: '#a5b4fc' }}>
+            developers.giphy.com
+          </a>{' '}
+          to also get trending GIFs (the same feed behind X's GIF picker) and GIF search.
+        </span>
       </div>
 
       {/* Memes & Hotkeys List */}

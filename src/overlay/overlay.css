@@ -281,6 +281,119 @@
 .memecord-icon-btn:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
 .memecord-icon-btn.active { background: var(--mc-accent-soft); color: var(--mc-accent) !important; }
 
+/* View tabs */
+.memecord-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 12px 10px;
+  padding: 3px;
+  border-radius: var(--mc-radius-sm);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--mc-border);
+}
+
+.memecord-tab {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--mc-muted) !important;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.memecord-tab:hover { color: var(--mc-text) !important; }
+.memecord-tab.active { background: var(--mc-surface-hover); color: var(--mc-text) !important; }
+.memecord-tab.active svg { color: #fb923c; }
+.memecord-tab:focus-visible { outline: 2px solid var(--mc-accent); outline-offset: 1px; }
+
+/* Trending feed */
+.memecord-trending-meta {
+  flex-direction: column;
+  gap: 2px;
+  margin: -2px 14px 8px;
+  font-size: 11px;
+  color: var(--mc-muted);
+}
+.memecord-trending-tip { color: var(--mc-faint); }
+
+.memecord-source-tag {
+  position: absolute;
+  left: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: rgba(10, 11, 16, 0.86);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #fff;
+}
+.memecord-source-tag.reddit { color: #ff8b60; }
+.memecord-source-tag.giphy { color: #a78bfa; }
+
+.memecord-card-save {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--mc-accent-strong);
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+.memecord-card:hover .memecord-card-save,
+.memecord-card:focus-visible .memecord-card-save { opacity: 1; transform: scale(1); }
+.memecord-card-save:hover { filter: brightness(1.15); }
+@media (hover: none) {
+  .memecord-card-save { opacity: 1; transform: none; }
+}
+
+.memecord-skeleton {
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  background: linear-gradient(100deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.04) 70%);
+  background-size: 200% 100%;
+  animation: memecord-shimmer 1.2s linear infinite;
+}
+
+@keyframes memecord-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+.memecord-attribution {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 4px 0 2px;
+  font-size: 10.5px;
+  font-weight: 650;
+  color: var(--mc-faint);
+}
+
+.memecord-empty .memecord-btn { margin-top: 8px; height: 30px; }
+
+.memecord-btn.spinning svg { animation: memecord-spin 0.8s linear infinite; }
+
+@keyframes memecord-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Toolbar: search + add */
 .memecord-toolbar {
   display: flex;
