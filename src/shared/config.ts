@@ -14,8 +14,6 @@ export const DEFAULT_MEMES: MemeItem[] = [
 
 export const PRESET_LIBRARY: MemeItem[] = [
   ...DEFAULT_MEMES,
-  { id: 'cat_vibing', name: 'Cat Vibing', emoji: '🐱', assetUrl: 'https://media.giphy.com/media/jpbnoe3UIa8TU8LM13/giphy.gif' },
-  { id: 'popcat', name: 'Pop Cat', emoji: '😺', assetUrl: 'https://media.giphy.com/media/S604D5NhkhvHT8Rwja/giphy.gif' },
   { id: 'this_is_fine', name: 'This Is Fine', emoji: '🔥', assetUrl: 'https://media.giphy.com/media/9M5jK4GXmD5o1irGrF/giphy.gif' },
   { id: 'confused_travolta', name: 'Confused Travolta', emoji: '🤷', assetUrl: 'https://media.giphy.com/media/g01ZnwAUvutuK8GIQn/giphy.gif' },
   { id: 'drake_yes', name: 'Drake Approves', emoji: '😎', assetUrl: 'https://media.giphy.com/media/wWue0rCDOphOE/giphy.gif' },

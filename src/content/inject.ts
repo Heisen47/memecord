@@ -303,10 +303,26 @@ interface ActiveCameraMeme {
 
   const activeAudioTrackIds = new Set<string>();
   const activeVideoTrackIds = new Set<string>();
+  // Composited tracks handed to the call app (plus clones); apps often mute by toggling `enabled`
+  const outgoingVideoTracks = new Set<MediaStreamTrack>();
+  let lastBroadcastKey = '';
+
+  function isOutgoingCameraOn(): boolean {
+    let anyOn = false;
+    outgoingVideoTracks.forEach((t) => {
+      if (t.readyState === 'ended') {
+        outgoingVideoTracks.delete(t);
+      } else if (t.enabled) {
+        anyOn = true;
+      }
+    });
+    return anyOn;
+  }
 
   function broadcastCallStreamState() {
     const hasAudio = activeAudioTrackIds.size > 0;
-    const hasVideo = activeVideoTrackIds.size > 0;
+    const hasVideo = activeVideoTrackIds.size > 0 && (outgoingVideoTracks.size === 0 || isOutgoingCameraOn());
+    lastBroadcastKey = `${hasAudio}|${hasVideo}`;
     const active = hasAudio || hasVideo;
 
     window.postMessage(
@@ -330,6 +346,14 @@ interface ActiveCameraMeme {
       '*'
     );
   }
+
+  // `enabled` flips fire no events, so poll cheaply and only broadcast on change
+  setInterval(() => {
+    if (outgoingVideoTracks.size === 0) return;
+    const hasAudio = activeAudioTrackIds.size > 0;
+    const hasVideo = activeVideoTrackIds.size > 0 && isOutgoingCameraOn();
+    if (`${hasAudio}|${hasVideo}` !== lastBroadcastKey) broadcastCallStreamState();
+  }, 1000);
 
   function trackMediaStreamTracks(stream: MediaStream) {
     if (!stream) return;
@@ -581,10 +605,12 @@ interface ActiveCameraMeme {
       cloned.getCapabilities = virtualVideoTrack.getCapabilities;
       cloned.getConstraints = virtualVideoTrack.getConstraints;
       cloned.applyConstraints = virtualVideoTrack.applyConstraints;
+      outgoingVideoTracks.add(cloned);
       return cloned;
     };
 
     // Track active video track
+    outgoingVideoTracks.add(virtualVideoTrack);
     activeVideoTrackIds.add(virtualVideoTrack.id);
     activeVideoTrackIds.add(realVideoTrack.id);
     broadcastCallStreamState();
@@ -602,6 +628,7 @@ interface ActiveCameraMeme {
       if (canvas.parentElement) canvas.remove();
       activeVideoTrackIds.delete(realVideoTrack.id);
       activeVideoTrackIds.delete(virtualVideoTrack.id);
+      outgoingVideoTracks.delete(virtualVideoTrack);
       broadcastCallStreamState();
       origStop();
     };

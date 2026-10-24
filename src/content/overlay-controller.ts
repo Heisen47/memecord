@@ -3,7 +3,6 @@ import { getSettings, saveSettings, addMeme, removeMeme } from '../shared/storag
 import { AppSettings, ExtensionMessage, MemeItem } from '../shared/types';
 import { assignDefaultHotkey, fetchAsDataUrl } from '../shared/media-resolver';
 import { isToggleShortcutPressed, getToggleShortcutText } from '../shared/platform';
-import '../overlay/overlay.css';
 
 export class OverlayController {
   private overlay: MemeOverlayManager | null = null;
@@ -45,10 +44,10 @@ export class OverlayController {
           );
         }
       },
-      onCloseDock: () => {
+      onDockMinimizedChange: (minimized) => {
         if (this.settings) {
-          saveSettings({ dockVisible: false });
-          this.settings.dockVisible = false;
+          this.settings.dockVisible = !minimized;
+          saveSettings({ dockVisible: !minimized });
         }
       }
     });
@@ -246,10 +245,9 @@ export class OverlayController {
     if (inCall && !this.isInCall) {
       this.isInCall = true;
       console.log('[Memecord] Ongoing call detected (cam or no-cam) -> showing HUD & enabling hotkeys');
-      if (this.settings?.dockVisible && this.settings.enabled) {
-        this.overlay?.setDockVisible(true);
-      }
-      this.overlay?.showToast('🎭 Memecord Active! Press 1–9 or click dock');
+      // Minimized HUD still shows as a pebble so it can always be reopened
+      this.overlay?.setDockVisible(Boolean(this.settings?.enabled));
+      this.overlay?.showToast('Memecord is ready — press 1–9 to send a meme');
     } else if (!inCall && this.isInCall) {
       this.isInCall = false;
       console.log('[Memecord] Call ended / outside call -> hiding HUD');
@@ -264,9 +262,11 @@ export class OverlayController {
         if (event.data.type === 'CALL_STREAM_STATE') {
           this.isCameraStreaming = Boolean(event.data.hasVideo);
           this.isAudioStreaming = Boolean(event.data.hasAudio);
+          this.overlay?.setCameraLive(this.isCameraStreaming);
           this.checkCallState();
         } else if (event.data.type === 'CAMERA_CALL_STATE') {
           this.isCameraStreaming = Boolean(event.data.active);
+          this.overlay?.setCameraLive(this.isCameraStreaming);
           this.checkCallState();
         } else if (event.data.type === 'WEBRTC_CALL_STATE') {
           this.isWebRtcConnected = Boolean(event.data.active);
@@ -309,6 +309,7 @@ export class OverlayController {
     this.keydownHandler = (e: KeyboardEvent) => {
       // ONLY trigger hotkeys when inside an active video call!
       if (!this.settings || !this.settings.enabled || !this.isInCall) return;
+      if (this.overlay?.isCapturingKeyboard()) return;
 
       // Don't trigger if user is typing in chat / input / textarea
       const activeEl = document.activeElement as HTMLElement | null;
@@ -330,9 +331,12 @@ export class OverlayController {
         this.settings.dockVisible = next;
         this.overlay?.setDockMinimized(!next);
         this.overlay?.setDockVisible(true);
-        this.overlay?.showToast(next ? '🎭 Memecord HUD Expanded' : `🎭 Memecord Minimized (${getToggleShortcutText()})`);
+        if (!next) this.overlay?.showToast(`Memecord minimized — ${getToggleShortcutText()} to reopen`);
         return;
       }
+
+      // Leave browser / call shortcuts (Cmd+R, Ctrl+1, Ctrl+D…) alone
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
 
       // Check if pressed key matches any meme hotkey (e.g. "1", "2", "3", "0", "Q")
       const key = e.key;
@@ -362,8 +366,8 @@ export class OverlayController {
             this.settings = newSettings;
             this.overlay?.updateSettings(newSettings);
 
-            // Re-apply dock visibility scoped to in-call state
-            this.overlay?.setDockVisible(this.isInCall && newSettings.dockVisible && newSettings.enabled);
+            // Re-apply dock visibility scoped to in-call state (minimized state comes from updateSettings)
+            this.overlay?.setDockVisible(this.isInCall && newSettings.enabled);
 
             window.postMessage(
               {
@@ -400,8 +404,10 @@ export class OverlayController {
           if (message.type === 'TOGGLE_DOCK') {
             if (this.settings) {
               const next = !this.settings.dockVisible;
+              this.settings.dockVisible = next;
               saveSettings({ dockVisible: next });
-              this.overlay?.setDockVisible(this.isInCall && next);
+              this.overlay?.setDockMinimized(!next);
+              this.overlay?.setDockVisible(this.isInCall && this.settings.enabled);
               sendResponse({ dockVisible: next });
             }
             return true;

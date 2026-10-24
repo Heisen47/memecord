@@ -5,7 +5,6 @@ import { AppSettings, MemeItem, MemeOverlayPosition } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/config';
 import { assignDefaultHotkey, fetchAsDataUrl } from '../shared/media-resolver';
 import { isToggleShortcutPressed, getToggleShortcutText, getToggleShortcutFullLabel } from '../shared/platform';
-import '../overlay/overlay.css';
 import './test.css';
 
 export const TestLab: React.FC = () => {
@@ -53,6 +52,7 @@ export const TestLab: React.FC = () => {
         videoPreviewRef.current.srcObject = null;
       }
       setCameraActive(false);
+      overlayRef.current?.setCameraLive(false);
       addLog('Virtual Camera Preview stopped.');
     } else {
       try {
@@ -63,6 +63,7 @@ export const TestLab: React.FC = () => {
           videoPreviewRef.current.srcObject = stream;
         }
         setCameraActive(true);
+        overlayRef.current?.setCameraLive(true);
         addLog('Webcam feed active! This preview shows what remote callers see.');
       } catch (err: any) {
         addLog(`Camera error: ${err?.message || err}`);
@@ -71,7 +72,9 @@ export const TestLab: React.FC = () => {
   };
 
   useEffect(() => {
+    let cancelled = false;
     getSettings().then((s) => {
+      if (cancelled) return;
       setSettings(s);
       overlayRef.current = new MemeOverlayManager(s, {
         onTriggerMeme: (meme) => {
@@ -80,11 +83,13 @@ export const TestLab: React.FC = () => {
         onAddMeme: async (meme) => {
           const updated = await addMeme(meme);
           setSettings(updated);
+          overlayRef.current?.updateSettings(updated);
           addLog(`Added new meme: ${meme.name}`);
         },
         onDeleteMeme: async (memeId) => {
           const updated = await removeMeme(memeId);
           setSettings(updated);
+          overlayRef.current?.updateSettings(updated);
           addLog(`Deleted meme: ${memeId}`);
         },
         onUpdateHotkey: (memeId, newHotkey) => {
@@ -94,8 +99,10 @@ export const TestLab: React.FC = () => {
           }));
           addLog(`Rebound meme ${memeId} to [${newHotkey}]`);
         },
-        onCloseDock: () => {
-          addLog(`HUD minimized. Click floating bubble or press ${getToggleShortcutText()}.`);
+        onDockMinimizedChange: (minimized) => {
+          saveSettings({ dockVisible: !minimized });
+          setSettings((prev) => ({ ...prev, dockVisible: !minimized }));
+          addLog(minimized ? `HUD minimized. Click the pebble or press ${getToggleShortcutText()}.` : 'HUD expanded.');
         }
       });
       overlayRef.current.setDockVisible(true);
@@ -105,6 +112,7 @@ export const TestLab: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const active = document.activeElement;
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) return;
+      if (overlayRef.current?.isCapturingKeyboard()) return;
 
       if (isToggleShortcutPressed(e)) {
         e.preventDefault();
@@ -118,6 +126,8 @@ export const TestLab: React.FC = () => {
         });
         return;
       }
+
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
 
       const key = e.key;
       getSettings().then((curr) => {
@@ -136,6 +146,7 @@ export const TestLab: React.FC = () => {
     window.addEventListener('keydown', handleKeyDown);
 
     return () => {
+      cancelled = true;
       window.removeEventListener('keydown', handleKeyDown);
       overlayRef.current?.destroy();
       overlayRef.current = null;
